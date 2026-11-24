@@ -145,6 +145,13 @@ picture, video, voice, music and sound engines need a graphics card; Tools & set
 Pick a model that is good at tool calls, such as Qwen 3 or Qwen 2.5 Coder (7B or larger), Llama 3.1 or later, Mistral
 Small or gpt-oss. Small models (3B and below) often write tool calls as text; Studio tries to recover them.
 
+**No model server yet?** With a ChatGPT plan (or an OpenAI API key) you can try Studio with OpenAI's Codex instead:
+install it in Account & settings → Tools & setup, sign in under Account & settings → Codex, and pick a `codex:` model at
+the top. Codex brings its own agent loop, so Studio's own loop and prompts sit out, but you get Studio around it: edit
+and command cards to approve, undo, plans, goals, and Studio's tools (pictures, Blender, the browser) through a bridge.
+Codex is for admins, in folders with the Sandbox off; its model runs on OpenAI's servers, so your code goes there, and
+it counts against your plan's Codex limits.
+
 ## Works with Strata
 
 [Strata](https://github.com/Niko1221/Strata) (MIT licence) runs Qwen3.8-Flash-Next, a 125B mixture-of-experts model, on
