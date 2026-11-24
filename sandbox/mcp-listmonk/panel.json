@@ -1,0 +1,38 @@
+{
+ "mcpServers": {
+  "listmonk": {
+   "command": "python3",
+   "args": [
+    "/path/to/eidoloom-studio/tools/listmonk_mcp.py"
+   ],
+   "env": {
+    "LISTMONK_URL": "http://127.0.0.1:9000",
+    "LISTMONK_USER": "studio",
+    "LISTMONK_TOKEN": "<the API user's token>",
+    "LISTMONK_ROOTS": "/path/to/your/projects",
+    "LISTMONK_TOOLS": "manage"
+   },
+   "approval": "with_commands",
+   "description": "listmonk email tools"
+  },
+  "listmonk-send": {
+   "command": "python3",
+   "args": [
+    "/path/to/eidoloom-studio/tools/listmonk_mcp.py"
+   ],
+   "env": {
+    "LISTMONK_URL": "http://127.0.0.1:9000",
+    "LISTMONK_USER": "studio",
+    "LISTMONK_TOKEN": "<the API user's token>",
+    "LISTMONK_ROOTS": "/path/to/your/projects",
+    "LISTMONK_TOOLS": "send",
+    "LISTMONK_RESTART": "docker restart listmonk_app",
+    "LISTMONK_BACKUP": "docker exec listmonk_db pg_dumpall -U listmonk",
+    "LISTMONK_BACKUP_DIR": "/path/to/listmonk-backups"
+   },
+   "approval": "always",
+   "timeout_s": 300,
+   "description": "listmonk email tools"
+  }
+ }
+}

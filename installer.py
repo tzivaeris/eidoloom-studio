@@ -361,7 +361,7 @@ MANAGER = "http://127.0.0.1:8787"
 
 GROUPS = [("services", "Services in Docker"), ("tools", "Tools on this machine"), ("engines", "Engines on the graphics card")]
 LATER_NOTE = "Comes in the next version of this installer (AMD graphics cards first)."
-NOT_INSTALLABLE = ["MailSender (listmonk) is its own project: set it up there, then enter its API user in Tool servers.",
+NOT_INSTALLABLE = ["listmonk (email) is its own project: set it up from listmonk.app, then add the two listmonk tool servers in Tool servers with its API user.",
                    "The model server (Ollama Manager and the Strata models) is its own project and is not installed here."]
 
 

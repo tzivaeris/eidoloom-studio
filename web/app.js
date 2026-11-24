@@ -6679,7 +6679,7 @@ function userToolLabel(name) { const m = /^user__(.+)$/.exec(name || ''); return
 const SERVER_LOOKS = {
   comfyui: ['create', 'pictures'], video: ['film', 'video'], voices: ['mic', 'voice'], sounds: ['music', 'sound'], audio: ['volume', 'sound'], blender: ['cube', '3d'],
   'greek-check': ['spell', 'language'], 'web-search': ['search', 'web'], fetch: ['download', 'fetch'], context7: ['book', 'docs'],
-  'tutoring-db': ['database', 'db'], mailsender: ['mail', 'mail'], 'mailsender-send': ['send', 'send'], browser: ['globe', 'browser'],
+  'tutoring-db': ['database', 'db'], listmonk: ['mail', 'mail'], 'listmonk-send': ['send', 'send'], browser: ['globe', 'browser'],
 };
 const SERVER_WORDS = [[/mail|listmonk|smtp/, 'mail', 'mail'], [/db|sql|postgres|mongo|redis|database/, 'database', 'db'], [/search|searx|brave|google/, 'search', 'web'],
   [/fetch|http|browser|web/, 'download', 'fetch'], [/doc|context|wiki|book/, 'book', 'docs'], [/comfy|image|picture|photo|diffusion/, 'create', 'pictures'],
@@ -6745,23 +6745,26 @@ const MCP_WORDS = {
     get_viewport_screenshot: () => ['Blender: look at the viewport', ''],
     get_scene_info: () => ['Blender: read the scene', ''],
     get_object_info: a => ['Blender: read an object', a.object_name || a.name || ''] },
-  mailsender: {
-    overview: () => ['MailSender', 'look at lists and campaigns'],
-    create_list: a => ['MailSender: new list', a.name],
-    find_contacts: a => ['MailSender: find contacts', [a.search && `«${clip(a.search, 40)}»`, a.list && `in ${[].concat(a.list).join(', ')}`].filter(Boolean).join(' ') || 'all'],
-    add_contact: a => ['MailSender: add a contact', `${a.name ? a.name + ' ' : ''}<${a.email}>` + (a.lists ? ` → ${[].concat(a.lists).join(', ')}` : '')],
-    update_contact: a => ['MailSender: change a contact', a.email],
-    change_lists: a => [`MailSender: ${a.action || 'change'} ${(a.emails || []).length} contact${(a.emails || []).length === 1 ? '' : 's'}`, `${a.action === 'add' ? 'to' : 'from'} ${[].concat(a.lists || []).join(', ')}`],
-    import_contacts: a => ['MailSender: import contacts', (a.path ? fileOf(a.path) : `${(a.rows || []).length} rows`) + ` → ${[].concat(a.lists || []).join(', ')}` + (/^(true|yes|1|on)$/i.test(String(a.overwrite ?? '')) ? ' · overwrite' : '')],
-    import_status: () => ['MailSender: import status', ''],
-    set_list_group: a => ['MailSender: move lists', `${[].concat(a.lists || []).join(', ')} → ${[a.category, a.subcategory].filter(Boolean).join(' › ') || 'no group'}`],
-    stop_import: () => ['MailSender: stop the import', ''],
-    list_templates: () => ['MailSender', 'list the templates'],
-    list_campaigns: () => ['MailSender', 'list the campaigns'],
-    get_campaign: a => ['MailSender: read a campaign', String(a.campaign)],
-    create_campaign: a => ['MailSender: draft a campaign', `«${clip(a.subject, 50)}» to ${[].concat(a.lists || []).join(', ')}`],
-    update_campaign: a => ['MailSender: change a campaign', String(a.campaign)],
-    preview_campaign: a => ['MailSender: preview', String(a.campaign) + (a.save_to ? ` → ${fileOf(a.save_to)}` : '')] },
+  listmonk: {
+    overview: () => ['listmonk', 'look at lists and campaigns'],
+    create_list: a => ['listmonk: new list', a.name],
+    find_contacts: a => ['listmonk: find contacts', [a.search && `«${clip(a.search, 40)}»`, a.list && `in ${[].concat(a.list).join(', ')}`].filter(Boolean).join(' ') || 'all'],
+    add_contact: a => ['listmonk: add a contact', `${a.name ? a.name + ' ' : ''}<${a.email}>` + (a.lists ? ` → ${[].concat(a.lists).join(', ')}` : '')],
+    update_contact: a => ['listmonk: change a contact', a.email],
+    change_lists: a => [`listmonk: ${a.action || 'change'} ${(a.emails || []).length} contact${(a.emails || []).length === 1 ? '' : 's'}`, `${a.action === 'add' ? 'to' : 'from'} ${[].concat(a.lists || []).join(', ')}`],
+    import_contacts: a => ['listmonk: import contacts', (a.path ? fileOf(a.path) : `${(a.rows || []).length} rows`) + ` → ${[].concat(a.lists || []).join(', ')}` + (/^(true|yes|1|on)$/i.test(String(a.overwrite ?? '')) ? ' · overwrite' : '')],
+    import_status: () => ['listmonk: import status', ''],
+    stop_import: () => ['listmonk: stop the import', ''],
+    list_templates: () => ['listmonk', 'list the templates'],
+    list_campaigns: () => ['listmonk', 'list the campaigns'],
+    get_campaign: a => ['listmonk: read a campaign', String(a.campaign)],
+    create_campaign: a => ['listmonk: draft a campaign', `«${clip(a.subject, 50)}» to ${[].concat(a.lists || []).join(', ')}`],
+    update_campaign: a => ['listmonk: change a campaign', String(a.campaign)],
+    copy_campaign: a => ['listmonk: copy a campaign', `${a.campaign} → ${[].concat(a.lists || []).join(', ')}`],
+    list_tags: () => ['listmonk: list the tags', ''],
+    tag_contacts: a => [`listmonk: ${a.action === 'remove' ? 'remove' : 'add'} a tag`, String(a.tag || [a.region, a.city].filter(Boolean).join(', '))],
+    fill_tag_list: a => ['listmonk: fill a list from a tag', String(a.tag || [a.region, a.city].filter(Boolean).join(', '))],
+    preview_campaign: a => ['listmonk: preview', String(a.campaign) + (a.save_to ? ` → ${fileOf(a.save_to)}` : '')] },
   browser: {
     browser_navigate: a => ['Browser: open', clip(a.url, 90)],
     browser_navigate_back: () => ['Browser: back', ''],
@@ -6778,7 +6781,7 @@ const MCP_WORDS = {
     browser_evaluate: () => ['Browser: run a script in the page', ''],
     browser_file_upload: a => ['Browser: upload', [].concat(a.paths || []).map(fileOf).join(', ')],
     browser_close: () => ['Browser: close the page', ''] },
-  'mailsender-send': {
+  'listmonk-send': {
     send_test: a => ['Send a test email', `campaign ${a.campaign} to ${(a.emails || []).join(', ')}`],
     start_campaign: a => ['Send a campaign now', `campaign ${a.campaign} to ${a.recipients} contacts`],
     schedule_campaign: a => ['Schedule a campaign', `campaign ${a.campaign} at ${a.send_at} to ${a.recipients} contacts`],
@@ -6786,7 +6789,7 @@ const MCP_WORDS = {
     cancel_campaign: a => ['Cancel a campaign', String(a.campaign)],
     send_email: a => ['Send an email', `«${clip(a.subject, 50)}» to ${a.to}`],
     delete_contacts: a => ['DELETE contacts', `${a.count} contacts in ${[].concat(a.lists || []).join(', ')}` + (a.keep?.length ? `, keeping ${[].concat(a.keep).join(', ')}` : '')],
-    restart_listmonk: a => ['Restart MailSender (listmonk)', clip(a.reason, 90)] },
+    restart_listmonk: a => ['Restart listmonk', clip(a.reason, 90)] },
 };
 function mcpWords(server, tool, args) {
   const a = parseArgs(args) || {}, known = MCP_WORDS[server] && MCP_WORDS[server][tool];

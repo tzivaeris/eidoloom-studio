@@ -13,7 +13,7 @@ Each item says what is installed, what is newest, and how to update, test and ro
   weblib   a library Studio's page loads from jsdelivr at a fixed version (Monaco, xterm, three.js, KaTeX).
   apt      system packages: only listed, with the sudo command, since Studio cannot use sudo.
 Automatic updates (settings `auto`, `window`) run only for items marked safe: Docker images that are not databases and do
-not change one (listmonk upgrades its database, so it waits for a click) and npx tool servers, at night, and only while
+not change one and npx tool servers, at night, and only while
 Studio is idle. Every update is tested; a failed test rolls it back.
 """
 import glob
@@ -31,7 +31,6 @@ import urllib.request
 
 HOME = os.path.expanduser("~")
 OPT = os.path.join(HOME, ".local", "opt")
-MAILSENDER = os.path.join(HOME, "Projects", "Tools", "MailSender")
 UA = {"User-Agent": "strata-studio-updates/1.0"}
 TORCH = re.compile(r"^(torch|torchvision|torchaudio|pytorch-triton-rocm|triton)==", re.I)
 
@@ -64,14 +63,6 @@ def catalog(root):
     py = lambda name: os.path.join(OPT, name, ".venv", "bin", "python")
     return [
         # ---- Docker services and images
-        {"id": "listmonk", "group": "docker", "name": "listmonk (MailSender)", "kind": "docker", "image": "listmonk/listmonk:latest",
-         "compose": (MAILSENDER, "app"), "test": "http://127.0.0.1:9100/", "auto_ok": False, "backup_db": "listmonk_db",
-         "note": "Upgrades MailSender's database when it starts, so it never updates by itself; the database is saved first."},
-        {"id": "mailsender-ui", "group": "docker", "name": "MailSender page (nginx)", "kind": "docker", "image": "nginx:1.27-alpine",
-         "compose": (MAILSENDER, "ui"), "test": "http://127.0.0.1:8090/", "auto_ok": True},
-        {"id": "listmonk-db", "group": "docker", "name": "MailSender database (PostgreSQL 17)", "kind": "docker", "image": "postgres:17-alpine",
-         "compose": (MAILSENDER, "db"), "test": "http://127.0.0.1:9100/", "auto_ok": False, "backup_db": "listmonk_db",
-         "note": "Fixes within PostgreSQL 17 only; moving to 18 needs a dump and restore by hand. Saved first, never automatic."},
         {"id": "searxng", "group": "docker", "name": "SearXNG (web search)", "kind": "docker", "image": "searxng/searxng:latest",
          "container": "studio-searxng", "run": ["--restart", "unless-stopped", "-p", "127.0.0.1:8888:8080",
                                                 "-v", os.path.join(root, "sandbox", "mcp-searxng", "config") + ":/etc/searxng"],
@@ -492,7 +483,7 @@ class Updates:
         self.sh(["docker", "tag", prev["image"], item["image"]])
         self.recreate(item)
         ok, why = self.test(item)
-        note = (f" If MailSender's database was changed by the newer version, restore it from {prev['backup']}." if prev.get("backup") else "")
+        note = (f" If the service's database was changed by the newer version, restore it from {prev['backup']}." if prev.get("backup") else "")
         if not ok:
             raise Fail(f"rolled back, but {why}.{note}")
         return "Rolled back to the earlier image." + note

@@ -11683,7 +11683,7 @@ CODEX_TOOLS_NOTE = ("\n\nYou also have Eidoloom Studio's tools, in your `studio`
                     "clicking, context7 for library documentation. A server this project runs here (start it as a command that keeps running, "
                     "such as `python3 -m http.server 8765`: your commands end their background `&` processes): view_page to check it yourself (width 390 "
                     "for a phone), open_preview to show it to the person; the browser server refuses local addresses. Greek text: greek-check every Greek text you write for people. "
-                    "Email: mailsender prepares drafts; mailsender-send sends real email, so use it only when the person asked for "
+                    "Email: listmonk prepares drafts; listmonk-send sends real email, so use it only when the person asked for "
                     "exactly that, after saying how many people it reaches. Pictures a tool returns come back to you to look at; "
                     "check your results before you finish. Each call shows in Studio's chat, and some ask the person first; a "
                     "skipped call means they said no.")
@@ -13108,7 +13108,7 @@ def helper_prompt(ws):
     h = HELPERS.get(ws["helper"]) or {}
     shell = {"bash": "bash", "powershell": "PowerShell (Windows)"}.get(h.get("shell"), h.get("shell") or "a shell")
     return (f"This folder is on the user's own computer \"{h.get('machine', '?')}\" ({h.get('os', '?')}), at {h.get('remote_path', '?')}. "
-            f"Studio itself, its tool servers (the mcp__ tools) and the services they use (such as MailSender, ComfyUI or the web "
+            f"Studio itself, its tool servers (the mcp__ tools) and the services they use (such as listmonk, ComfyUI or the web "
             f"browser) run on a different computer: Studio's server \"{socket.gethostname()}\" ({platform.system()}). Addresses such as "
             f"127.0.0.1 or localhost in those tools' descriptions and results are on that server, which commands on "
             f"\"{h.get('machine', '?')}\" cannot reach, so use those services only through their tools; the tools see this project as "

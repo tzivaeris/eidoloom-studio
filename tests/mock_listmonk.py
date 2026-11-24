@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """A tiny in-memory listmonk API for the tests of tools/listmonk_mcp.py: python3 mock_listmonk.py PORT.
 
-It also plays MailSender's own routes the tools use (MAILSENDER_URL): /pacer/status, /pacer/continues/<ids> (each campaign's record
-list, set with POST /mock/record?campaign=N&list=M) and a status change held by the pacer (POST /mock/pacer?held=1 answers 409).
 POST /mock/stuck?mode=soft|hard makes an import hang (hard: stopping it does not work, as with a database lock), and
 POST /mock/restart is what LISTMONK_RESTART runs in the tests. It answers only to "Authorization: token tester:secret" and keeps what was sent (tests, emails, status changes) in
 GET /mock/sent, so the tests can tell what would have reached people.
@@ -18,10 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 LOCK = threading.Lock()
 DB = {"lists": [{"id": 1, "name": "Γονείς", "type": "private", "optin": "single", "tags": [], "subscriber_count": 0}],
-      "subs": [], "campaigns": [], "sent": [], "import": {"name": "", "total": 0, "imported": 0, "status": "none"}, "log": "",
-      "records": {}, "held": False}
-PACER = {"limit": 1500, "window_hours": 25, "used": 1400, "left": 100, "margin": 15, "full_at": None, "blocked_until": None, "block_reason": None,
-         "resume_at": None, "queue": [], "events": []}
+      "subs": [], "campaigns": [], "sent": [], "import": {"name": "", "total": 0, "imported": 0, "status": "none"}, "log": ""}
 TEMPLATES = [{"id": 1, "name": "Newsletter", "type": "campaign", "is_default": True},
              {"id": 2, "name": "Newsletter – transactional", "type": "tx", "is_default": False}]
 
@@ -33,21 +28,8 @@ def add_sub(email, name, lists, attribs=None, status="enabled", sub_status="conf
     return s
 
 
-def in_lists(s, ids):
-    return any(l["id"] in ids for l in s["lists"])
-
-
-MEMBERS = r"subscribers\.id (NOT )?IN \(SELECT subscriber_id FROM subscriber_lists WHERE list_id IN \(([\d,]+)\)\)"
-
-
 def matches(s, q, list_ids, sub_status):
     if list_ids and not any(l["id"] in list_ids for l in s["lists"]):
-        return False
-    for neg, ids in re.findall(MEMBERS, q):           # who is (or is not) in some lists, e.g. a continuation's records
-        if in_lists(s, {int(i) for i in ids.split(",")}) == bool(neg):
-            return False
-    m = re.search(r"subscribers\.id IN \(([\d,]+)\)", q)        # people picked by hand
-    if m and s["id"] not in {int(i) for i in m.group(1).split(",")} and not re.search(r"@> '", q):
         return False
     if sub_status and not any(l["subscription_status"] == sub_status and (not list_ids or l["id"] in list_ids) for l in s["lists"]):
         return False
@@ -68,9 +50,6 @@ def matches(s, q, list_ids, sub_status):
             return False
     if "subscribers.status = 'enabled'" in q and s["status"] != "enabled":
         return False
-    if "NOT IN (SELECT subscriber_id FROM subscriber_lists WHERE status = 'unsubscribed')" in q and any(
-            l["subscription_status"] == "unsubscribed" for l in s["lists"]):
-        return False
     if "subscribers.status != 'blocklisted'" in q and s["status"] == "blocklisted":
         return False
     if "subscriber_lists.status != 'unsubscribed'" in q and not any(l["subscription_status"] != "unsubscribed" and (not list_ids or l["id"] in list_ids) for l in s["lists"]):
@@ -90,14 +69,6 @@ class H(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def reply_plain(self, data, code=200):
-        body = json.dumps(data, ensure_ascii=False).encode()
-        self.send_response(code)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
     def body(self):
         n = int(self.headers.get("Content-Length") or 0)
         return self.rfile.read(n) if n else b""
@@ -110,15 +81,6 @@ class H(BaseHTTPRequestHandler):
         if path == "/mock/stuck":          # an import that never moves: "soft" stops when asked, "hard" does not (a database lock)
             DB["import"] = {"name": "stuck.csv", "total": 50, "imported": 0, "status": "importing"}
             DB["stuck"] = (urllib.parse.parse_qs(url.query).get("mode") or ["soft"])[0]
-            return self.reply(200, True)
-        if path == "/mock/tracking":       # MailSender's tracking connection on (1) or off (0)
-            DB["tracking_off"] = (urllib.parse.parse_qs(url.query).get("on") or ["0"])[0] != "1"
-            return self.reply(200, True)
-        if path == "/mock/record":         # campaign N reached the people on list M (MailSender's record list)
-            DB["records"][int(q["campaign"][0])] = int(q["list"][0])
-            return self.reply(200, True)
-        if path == "/mock/pacer":          # nothing may be sent now: starting a campaign is held (MailSender answers 409)
-            DB["held"] = q.get("held", ["0"])[0] == "1"
             return self.reply(200, True)
         if path == "/mock/restart":
             DB["import"], DB["stuck"] = {"name": "", "total": 0, "imported": 0, "status": "none"}, None
@@ -134,15 +96,6 @@ class H(BaseHTTPRequestHandler):
 
     def route(self, method, path, q, data, raw, ctype):
         one = lambda key: (q.get(key) or [""])[0]
-        if path == "/pacer/status":
-            return self.reply_plain({**PACER, "next_free": [{"at": "2026-11-21T10:00:00+00:00", "n": 700}],
-                                     "frees": [{"at": "2026-11-21T10:00:00+00:00", "n": 700}, {"at": "2026-11-21T12:00:00+00:00", "n": 700}]})
-        m = re.fullmatch(r"/pacer/continues/([\d,]+)", path)
-        if m:
-            ids = [int(i) for i in m.group(1).split(",")]
-            recs = [DB["records"][i] for i in ids if i in DB["records"]]
-            return self.reply_plain({"sql": f"subscribers.id IN (SELECT subscriber_id FROM subscriber_lists WHERE list_id IN ({','.join(map(str, recs))}))" if recs else None,
-                                     "records": {str(i): DB["records"].get(i) for i in ids}, "missing": []})
         if path == "/api/dashboard/counts":
             return self.reply(200, {"subscribers": {"total": len(DB["subs"]), "blocklisted": sum(s["status"] == "blocklisted" for s in DB["subs"])},
                                     "campaigns": {"total": len(DB["campaigns"])}, "messages": len(DB["sent"])})
@@ -197,8 +150,6 @@ class H(BaseHTTPRequestHandler):
                     elif data["action"] == "unsubscribe" and have:
                         have["subscription_status"] = "unsubscribed"
             return self.reply(200, True)
-        if path == "/api/settings" and method == "GET":
-            return self.reply(200, {"privacy.disable_tracking": DB.get("tracking_off", True)})
         if path == "/api/subscribers/query/lists" and method == "PUT":
             for s in [s for s in DB["subs"] if matches(s, data.get("query") or "", data.get("list_ids") or [], "")]:
                 for t in data["target_list_ids"]:
@@ -261,9 +212,6 @@ class H(BaseHTTPRequestHandler):
                           "media": [{"id": i, "filename": f"file{i}.pdf"} for i in data.get("media") or []]})
                 return self.reply(200, c)
             if m.group(2) == "/status":
-                if DB["held"] and data["status"] == "running":
-                    DB["sent"].append({"kind": "held", "campaign": c["id"]})
-                    return self.reply_plain({"message": "held", "held": True, "pacer": {**PACER, "resume_at": "2026-11-21T10:00:00+00:00"}}, 409)
                 c["status"] = data["status"]
                 DB["sent"].append({"kind": "status", "campaign": c["id"], "status": data["status"]})
                 return self.reply(200, c)

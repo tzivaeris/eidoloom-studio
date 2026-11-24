@@ -3765,7 +3765,7 @@ def test_updates(tmp):
     check("the state survives a restart", again.info("fake-safe").get("fake_version") == "1.0" and again.state["history"])
     real = {i["id"]: i for i in updates.catalog(ROOT)}
     check("the real catalogue: only Docker images that change no database, and npx tool servers, update by themselves",
-          sorted(k for k, v in real.items() if v["auto_ok"]) == ["context7", "languagetool", "mailsender-ui", "mcp-fetch", "mcp-searxng", "playwright-mcp", "postgres-mcp", "searxng"])
+          sorted(k for k, v in real.items() if v["auto_ok"]) == ["context7", "languagetool", "mcp-fetch", "mcp-searxng", "playwright-mcp", "postgres-mcp", "searxng"])
 
 
 def test_installer(c):
@@ -3918,14 +3918,14 @@ def test_browser_tool():
     check("also in Greek and from Ask about this page", greek.count("knadh/listmonk/releases") == 2, greek)
     check("but a message that does not point at it does not hear about it, so another project's page cannot steer the work", unrelated == ["", "", ""], unrelated)
     check("but not for someone the browser is not shared with, for an empty tab, or without the server", hidden_from_user == "" and blank == "" and no_server == "")
-    saved, sm.APP = sm.APP, types.SimpleNamespace(mcp=types.SimpleNamespace(servers=[{"name": "mailsender", "description": "MailSender"}]))
-    prompt = sm.build_mcp_prompt(types.SimpleNamespace(ws={"path": "/p"}, mcp_tools={"mcp__mailsender__overview": {"server": "mailsender", "client": types.SimpleNamespace(instructions="")}}))
+    saved, sm.APP = sm.APP, types.SimpleNamespace(mcp=types.SimpleNamespace(servers=[{"name": "listmonk", "description": "listmonk"}]))
+    prompt = sm.build_mcp_prompt(types.SimpleNamespace(ws={"path": "/p"}, mcp_tools={"mcp__listmonk__overview": {"server": "listmonk", "client": types.SimpleNamespace(instructions="")}}))
     sm.APP = saved
     check("the tool servers' prompt says not to hunt for a service's passwords or settings when its tools fall short, but to ask", "passwords, tokens or settings files" in prompt and "ask the user" in prompt, prompt[-300:])
 
 
 def test_listmonk_mcp(tmp):
-    print("MailSender MCP server (tools/listmonk_mcp.py, against a fake listmonk)")
+    print("listmonk MCP server (tools/listmonk_mcp.py, against a fake listmonk)")
     port = free_port()
     mock = subprocess.Popen([sys.executable, os.path.join(ROOT, "tests", "mock_listmonk.py"), str(port)])
     try:
@@ -3945,14 +3945,13 @@ def test_listmonk_mcp(tmp):
             msgs += [{"jsonrpc": "2.0", "id": i + 2, "method": "tools/call", "params": {"name": n, "arguments": a}} for i, (n, a) in enumerate(calls)]
             out = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "listmonk_mcp.py")], input="\n".join(map(json.dumps, msgs)) + "\n",
                                  capture_output=True, text=True, timeout=180,
-                                 env={**os.environ, "LISTMONK_URL": f"http://127.0.0.1:{port}", "MAILSENDER_URL": f"http://127.0.0.1:{port}",
-                                      "LISTMONK_USER": user, "LISTMONK_TOKEN": token,
+                                 env={**os.environ, "LISTMONK_URL": f"http://127.0.0.1:{port}", "LISTMONK_USER": user, "LISTMONK_TOKEN": token,
                                       "LISTMONK_TOOLS": half, "LISTMONK_ROOTS": tmp, **(env or {})})
             answers = {a["id"]: a for a in map(json.loads, out.stdout.splitlines())}
             return [t["name"] for t in answers[1]["result"]["tools"]], [(answers[i + 2]["result"]["content"][0]["text"], answers[i + 2]["result"]["isError"]) for i in range(len(calls))]
 
         sent = lambda: json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/mock/sent"))["data"]
-        names, r = run("manage", [("overview", {}), ("create_list", {"name": "Δάσκαλοι", "category": "Σχολεία"}),
+        names, r = run("manage", [("overview", {}), ("create_list", {"name": "Δάσκαλοι", "tags": ["school"]}),
                                   ("import_contacts", {"path": os.path.join(folder, "parents.csv"), "lists": ["Γονείς"]}),
                                   ("import_contacts", {"rows": [{"email": "eleni@example.com", "name": "Ελένη"}], "lists": ["δάσκαλοι"]}),
                                   ("add_contact", {"email": "Me@Example.com", "name": "Me"}),
@@ -3965,8 +3964,10 @@ def test_listmonk_mcp(tmp):
                                   ("create_list", {"name": "γονείς"}), ("add_contact", {"email": "maria@example.com"}),
                                   ("create_campaign", {"name": "x", "subject": "y", "lists": ["Nobody"], "body": "z"})])
         check("the manage half looks and prepares, and cannot send", "start_campaign" not in names and "send_email" not in names and "create_campaign" in names, names)
-        check("overview names the lists", not r[0][1] and "Γονείς" in r[0][0], r[0][0])
-        check("a list is made, with a MailSender category", not r[1][1] and "Δάσκαλοι" in r[1][0], r[1][0])
+        check("nothing of a front end remains: no pacer, continuation or list-group tools", not {"sending_capacity", "check_already_sent", "set_list_group"} & set(names)
+              and "Mail" + "Sender" not in open(os.path.join(ROOT, "tools", "listmonk_mcp.py"), encoding="utf-8").read(), names)
+        check("overview names the lists", not r[0][1] and "Γονείς" in r[0][0] and "Lists:" in r[0][0], r[0][0])
+        check("a list is made, with a tag of its own", not r[1][1] and "Δάσκαλοι" in r[1][0], r[1][0])
         check("a CSV in the project is imported into a list by name", not r[2][1] and "2 of 2" in r[2][0], r[2][0])
         check("so are rows given directly", not r[3][1] and "1 of 1" in r[3][0], r[3][0])
         check("one contact is added", not r[4][1] and "me@example.com" in r[4][0], r[4][0])
@@ -3997,28 +3998,15 @@ def test_listmonk_mcp(tmp):
         log = sent()
         check("and exactly that reached listmonk", [e["kind"] for e in log] == ["test", "status", "status", "tx"] and log[0]["to"] == ["me@example.com"]
               and log[1]["status"] == "running" and log[3]["template_id"] == 2 and log[3]["data"]["subject"] == "Ραντεβού", log)
-        _, r = run("manage", [("create_list", {"name": "Γονείς Θεσ/νίκης", "category": "Γονείς", "subcategory": "Θεσσαλονίκη"}),
-                              ("create_list", {"name": "Δάσκαλοι Θεσ/νίκης", "category": "Εκπαιδευτικοί", "subcategory": "Θεσσαλονίκη"}),
-                              ("set_list_group", {"lists": ["Γονείς"], "category": "Γονείς", "subcategory": "Αθήνα"}),
-                              ("set_list_group", {"lists": ["Γονείς"], "subcategory": ""}),
-                              ("overview", {}),
-                              ("create_list", {"name": "Αγ. Σοφίας", "category": "Γονείς", "subcategory": "Αγία  Σοφία"}),
-                              ("set_list_group", {"lists": ["Αγ. Σοφίας"], "category": "Νέα Ιωνία"}),
-                              ("create_campaign", {"name": "Πόλη", "subject": "Νέα", "lists": ["› Θεσσαλονίκη"], "body": "<p>x</p>"}),
-                              ("create_campaign", {"name": "Γονείς Θ", "subject": "Νέα", "lists": ["Γονείς › Θεσσαλονίκη"], "body": "<p>x</p>"}),
-                              ("create_list", {"name": "x", "category": "y"}), ("create_campaign", {"name": "z", "subject": "z", "lists": ["Γονείς › Πάτρα"], "body": "z"})])
-        check("a list can be made with a category and a sub-category (a city)", not r[0][1] and "in Γονείς › Θεσσαλονίκη" in r[0][0] and "Εκπαιδευτικοί › Θεσσαλονίκη" in r[1][0], r[0][0])
-        check("lists move to a group, and a sub-category can be removed while the category stays", "Γονείς → Γονείς › Αθήνα" in r[2][0] and "Γονείς → Γονείς." in r[3][0], [r[2][0], r[3][0]])
-        check("the overview shows each list's group", "· Γονείς › Θεσσαλονίκη" in r[4][0] and "· Εκπαιδευτικοί › Θεσσαλονίκη" in r[4][0] and "cat:" not in r[4][0], r[4][0])
-        check("names with spaces keep them, although listmonk turns spaces in tags into hyphens", "in Γονείς › Αγία Σοφία" in r[5][0]
-              and "Νέα Ιωνία › Αγία Σοφία" in r[6][0], [r[5][0], r[6][0]])
-        r = r[:5] + r[7:]
-        check("a campaign can go to a whole city, across categories, or to one category's city", "Γονείς Θεσ/νίκης, Δάσκαλοι Θεσ/νίκης" in r[5][0]
-              and "to Γονείς Θεσ/νίκης, reaching" in r[6][0], [r[5][0], r[6][0]])
-        check("an empty group is refused, naming the groups there are", r[8][1] and "Groups:" in r[8][0] and "Γονείς › Θεσσαλονίκη" in r[8][0], r[8][0])
+        _, r = run("manage", [("create_list", {"name": "Sports", "tags": ["club", "kids"]}), ("overview", {})])
+        check("a list can carry listmonk list tags, shown in the overview", not r[0][1] and "tags club, kids" in r[1][0], r[1][0])
         names, r = run("manage", [("import_contacts", {"rows": [{"email": "maria@example.com", "name": "Μαρία Π."}], "lists": ["Γονείς"], "overwrite": "True", "confirmed": "false"})])
         check("yes and no given as text count (\"True\" meant overwrite)", not r[0][1] and "existing contacts updated" in r[0][0] and "import_status" in names and "stop_import" in names, r[0][0])
-        # Contact tags (MailSender's regions under a city, in attribs.tags) and keeping unsubscribes when a contact is saved.
+        def lm(method, path, body=None):
+            req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=json.dumps(body).encode() if body is not None else None, method=method,
+                                         headers={"Authorization": "token tester:secret", "Content-Type": "application/json"})
+            return json.load(urllib.request.urlopen(req))["data"]
+        # Contact tags (a name under a group, in attribs.tags) and keeping unsubscribes when a contact is saved.
         names, r = run("manage", [("list_tags", {}),
                                   ("update_contact", {"email": "nikos@example.com", "name": "Νίκος Κ."}),
                                   ("find_contacts", {"search": "nikos"}),
@@ -4046,59 +4034,51 @@ def test_listmonk_mcp(tmp):
               and "- Εύοσμος:" in r[6][0], r[6][0])
         check("find_contacts finds contacts by tag", r[7][0].startswith("2 contacts match"), r[7][0])
         check("a tag is removed, written as Region (City)", not r[8][1] and "from 1 contact" in r[8][0], r[8][0])
-        check("fill_tag_list fills a list in the Ετικέτες category with exactly the tagged contacts", not r[9][1] and "'Καλαμαριά (Θεσσαλονίκη)'" in r[9][0]
-              and "in Ετικέτες)" in r[9][0] and "holds the 1 contacts" in r[9][0], r[9][0])
+        check("fill_tag_list fills a list of its own with exactly the tagged contacts", not r[9][1] and "'Καλαμαριά (Θεσσαλονίκη)'" in r[9][0]
+              and "holds the 1 contacts" in r[9][0] and "contact-tag" in next(l["tags"] for l in lm("GET", "/api/lists")["results"] if l["name"] == "Καλαμαριά (Θεσσαλονίκη)"), r[9][0])
         check("changing tags leaves lists and subscriptions alone (still unsubscribed)", "Γονείς (unsubscribed)" in r[10][0], r[10][0])
         check("removing a tag nobody has is refused, naming the tags there are", r[11][1] and "Καλαμαριά (Θεσσαλονίκη)" in r[11][0], r[11][0])
         check("tag_contacts needs to be told who", r[12][1] and "say who" in r[12][0], r[12][0])
         check("filling again keeps the same list", not r[13][1] and "holds the 1 contacts" in r[13][0], r[13][0])
-        # Campaigns sent to areas (contact tags) and MailSender's hidden campaign settings (ms: tags), which must survive edits.
-        def lm(method, path, body=None):
-            req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=json.dumps(body).encode() if body is not None else None, method=method,
-                                         headers={"Authorization": "token tester:secret", "Content-Type": "application/json"})
-            return json.load(urllib.request.urlopen(req))["data"]
-        _, r = run("manage", [("tag_contacts", {"region": "Νέα Ιωνία", "city": "Θεσσαλονίκη", "emails": ["maria@example.com"]}),
-                              ("create_campaign", {"name": "Εύοσμος", "subject": "Νέα", "to_tags": ["Εύοσμος", "Νέα Ιωνία"],
+        # Campaigns go to lists only, with no hidden settings; the body carries listmonk's own tracking tags.
+        _, r = run("manage", [("create_campaign", {"name": "Εύοσμος", "subject": "Νέα", "lists": ["Γονείς"], "tags": ["νέα"],
                                                    "body": '<p>Γεια <a href="https://example.com">x</a></p>'}),
-                              ("create_campaign", {"name": "κενό", "subject": "x", "to_tags": ["Εύοσμος"], "body": " "})])
-        r = r[1:]
+                              ("create_campaign", {"name": "κενό", "subject": "x", "lists": ["Γονείς"], "body": " "}),
+                              ("create_campaign", {"name": "χωρίς", "subject": "x", "body": "y"})])
         cid = int(re.search(r"#(\d+)", r[0][0]).group(1))
         camp = lm("GET", f"/api/campaigns/{cid}")
-        helper = next(int(t.split(":")[-1]) for t in camp["tags"] if t.startswith("ms:to-list:"))
-        check("a campaign can go to areas only: a helper list is made and named, with how many the areas reach", not r[0][1]
-              and "areas Εύοσμος (Θεσσαλονίκη)" in r[0][0] and "contacts in the areas" in r[0][0]
-              and [l["id"] for l in camp["lists"]] == [helper] and "ms:to-tag:Θεσσαλονίκη/Εύοσμος" in camp["tags"], [r[0][0], camp["tags"]])
-        check("an area name keeps its space although listmonk hyphenates tags", "ms:to-tag:Θεσσαλονίκη/Νέα\u00a0Ιωνία" in camp["tags"]
-              and "Νέα Ιωνία (Θεσσαλονίκη)" in r[0][0], camp["tags"])
-        check("a campaign with a mistake leaves no helper list behind", r[1][1] and sum(l["name"].startswith("Ετικέτες · ") for l in lm("GET", "/api/lists")["results"]) == 1, r[1][0])
-        # MailSender switched open + click tracking on for it (the UI keeps these as hidden tags and adds the pixel).
-        lm("PUT", f"/api/campaigns/{cid}", {**camp, "lists": [l["id"] for l in camp["lists"]], "tags": camp["tags"] + ["ms:tracking", "ms:clicks"],
-                                              "body": camp["body"] + "\n{{ TrackView }}"})
-        _, r = run("manage", [("update_campaign", {"campaign": str(cid), "tags": ["νέα"], "lists": ["Δάσκαλοι"],
-                                                   "body": '<p>Νέο <a href="https://example.com/a">a</a></p>'}),
+        check("a campaign goes to lists, with only the tags the caller gave", not r[0][1] and [l["id"] for l in camp["lists"]] == [1] and camp["tags"] == ["νέα"], camp)
+        check("a campaign with no body, or no lists, is refused", r[1][1] and "no body" in r[1][0] and r[2][1] and "which lists" in r[2][0], [r[1][0], r[2][0]])
+        lm("PUT", f"/api/campaigns/{cid}", {**camp, "lists": [1], "media": [7]})
+        _, r = run("manage", [("update_campaign", {"campaign": str(cid), "lists": ["Δάσκαλοι"], "body": '<p>Νέο</p>\n{{ TrackView }}'}),
                               ("get_campaign", {"campaign": str(cid)}), ("list_campaigns", {})])
         camp = lm("GET", f"/api/campaigns/{cid}")
-        check("update_campaign keeps MailSender's settings: tracking, areas and the helper list", not r[0][1] and "νέα" in camp["tags"]
-              and {"ms:tracking", "ms:clicks", f"ms:to-list:{helper}"} <= set(camp["tags"]) and helper in [l["id"] for l in camp["lists"]]
-              and len(camp["lists"]) == 2, camp)
-        check("a new body of a tracked campaign gets the pixel and tracked links back", camp["body"].count("{{ TrackView }}") == 1
-              and 'href="https://example.com/a@TrackLink"' in camp["body"], camp["body"])
-        check("get_campaign shows the areas, how many they reach and the tracking", "Areas (contact tags): Εύοσμος (Θεσσαλονίκη)" in r[1][0]
-              and "Open tracking: on, clicks too, anonymous" in r[1][0] and "Ετικέτες · " not in r[1][0].split("\n")[0], r[1][0])
-        check("list_campaigns says which go to areas and track opens, not the helper list", f"#{cid} " in r[2][0]
-              and "+ areas Εύοσμος (Θεσσαλονίκη)" in r[2][0] and "· open tracking + clicks" in r[2][0], r[2][0])
-        names, r = run("send", [("start_campaign", {"campaign": str(cid), "recipients": 1})])
-        check("a tracked campaign does not start while MailSender's tracking connection is off", r[0][1] and "tracking connection is off" in r[0][0]
-              and lm("GET", f"/api/campaigns/{cid}")["status"] == "draft", r[0][0])
-        urllib.request.urlopen(f"http://127.0.0.1:{port}/mock/tracking?on=1")
-        _, r = run("send", [("start_campaign", {"campaign": str(cid), "recipients": 999})])
+        check("update_campaign changes what is given and keeps tags and attachments", not r[0][1] and camp["tags"] == ["νέα"]
+              and [x["id"] for x in camp["media"]] == [7] and [l["name"] for l in camp["lists"]] == ["Δάσκαλοι"] and camp["subject"] == "Νέα", camp)
+        check("get_campaign and list_campaigns say when the body has {{ TrackView }}", "Open tracking: on" in r[1][0] and f"#{cid} " in r[2][0]
+              and "· open tracking" in r[2][0], [r[1][0], r[2][0]])
+        names, r = run("send", [("start_campaign", {"campaign": str(cid), "recipients": 999})])
         n = int(re.search(r"reaches (\d+) contacts", r[0][0]).group(1))
-        in_helper = [s["email"] for s in lm("GET", f"/api/subscribers?list_id={helper}")["results"]]
-        check("before starting, the areas are refilled with the tagged contacts who never unsubscribed", r[0][1] and "maria@example.com" in in_helper
-              and "nikos@example.com" not in in_helper, [r[0][0], in_helper])
+        check("starting needs the right number of recipients, which the refusal gives", r[0][1] and lm("GET", f"/api/campaigns/{cid}")["status"] == "draft", r[0][0])
         _, r = run("send", [("start_campaign", {"campaign": str(cid), "recipients": n})])
-        check("and then it starts, counting the areas", not r[0][1] and f"about {n} contacts" in r[0][0]
-              and lm("GET", f"/api/campaigns/{cid}")["status"] == "running", r[0][0])
+        check("and then it starts through listmonk's own status route", not r[0][1] and f"about {n} contacts" in r[0][0]
+              and lm("GET", f"/api/campaigns/{cid}")["status"] == "running" and sent()[-1] == {"kind": "status", "campaign": cid, "status": "running"}, [r[0][0], sent()[-1]])
+        _, r = run("send", [("pause_campaign", {"campaign": str(cid)}), ("cancel_campaign", {"campaign": str(cid)}), ("start_campaign", {"campaign": str(cid), "recipients": n})])
+        check("pausing and cancelling use the same route, and a cancelled campaign cannot start", not r[0][1] and not r[1][1] and r[2][1] and "cancelled" in r[2][0]
+              and [e["status"] for e in sent()[-2:]] == ["paused", "cancelled"], [x[0] for x in r])
+        _, r = run("manage", [("create_campaign", {"name": "Διάλεξη", "subject": "Πρόσκληση", "lists": ["Γονείς"], "body": "<p>x</p>"})])
+        second = int(re.search(r"#(\d+)", r[0][0]).group(1))
+        _, r = run("send", [("schedule_campaign", {"campaign": str(second), "send_at": "tomorrow", "recipients": 1}),
+                            ("schedule_campaign", {"campaign": str(second), "send_at": "2026-12-01T09:00:00+02:00", "recipients": 1})])
+        check("scheduling needs a real date, and goes through listmonk's status route with it", r[0][1] and "send_at" in r[0][0] and not r[1][1]
+              and lm("GET", f"/api/campaigns/{second}")["status"] == "scheduled" and lm("GET", f"/api/campaigns/{second}")["send_at"] == "2026-12-01T09:00:00+02:00", r)
+        lm("PUT", f"/api/campaigns/{second}", {**lm("GET", f"/api/campaigns/{second}"), "lists": [1], "media": [7], "tags": ["νέα"], "body": "<p>x</p>\n{{ TrackView }}"})
+        _, r = run("manage", [("copy_campaign", {"campaign": str(second)}), ("copy_campaign", {"campaign": str(second), "lists": ["Δάσκαλοι"]})])
+        check("copy_campaign needs the new lists", r[0][1] and "which lists the copy goes to" in r[0][0], r[0][0])
+        copy = lm("GET", f"/api/campaigns/{int(re.search(r'#(\d+)', r[1][0]).group(1))}") if not r[1][1] else {}
+        check("a copy keeps subject, text, tags and attachments, goes to the new lists, and is a draft", not r[1][1] and copy["subject"] == "Πρόσκληση"
+              and [x["id"] for x in copy["media"]] == [7] and copy["tags"] == ["νέα"] and [l["name"] for l in copy["lists"]] == ["Δάσκαλοι"]
+              and copy["status"] == "draft" and not copy.get("send_at") and "{{ TrackView }}" in copy["body"] and "file7.pdf" in r[1][0], [r[1][0], copy])
         bad_files = {"attribs.csv": 'email,name,attribs\nm@example.com,Μ,"{""city"": ""Αθήνα""}"\n',
                      "columns.csv": "email,name,city,mobile\nm@example.com,Μ,Αθήνα,690\n",
                      "values.csv": 'email,name,attributes\nnot-an-email,Χ,\nok@example.com,Ο,"city: Αθήνα"\nshort@example.com\n'}
@@ -4128,7 +4108,7 @@ def test_listmonk_mcp(tmp):
         check("with LISTMONK_RESTART the send half can restart listmonk, given a reason", names[-1] == "restart_listmonk" and r[0][1] and "reason" in r[0][0]
               and not r[1][1] and "Restarted listmonk" in r[1][0] and "import it again" in r[1][0] and sent()[-1] == {"kind": "restart"}, r)
         run("manage", [("change_lists", {"emails": ["eleni@example.com"], "action": "add", "lists": ["Γονείς"]})])
-        backups = os.path.join(tmp, "ms-backups")
+        backups = os.path.join(tmp, "listmonk-backups")
         dump = f"{sys.executable} -c \"print('-- dump ' + 'x' * 2000)\""
         names, r = run("send", [("delete_contacts", {"lists": ["Γονείς"], "keep": ["Γονείς"], "count": 1}),
                                 ("delete_contacts", {"lists": ["Γονείς"], "keep": ["Δάσκαλοι"], "count": 99})],
@@ -4144,53 +4124,6 @@ def test_listmonk_mcp(tmp):
               and "kept 1" in r[0][0] and os.listdir(backups) and "Ελένη" in after[0][0] and "1 contacts match" in after[1][0], [r[0][0], after[1][0]])
         _, r = run("send", [("delete_contacts", {"lists": ["Δάσκαλοι"], "count": 1})], env={"LISTMONK_BACKUP": f"{sys.executable} -c \"import sys; sys.exit(3)\"", "LISTMONK_BACKUP_DIR": backups})
         check("if the database cannot be saved first, nothing is deleted", r[0][1] and "nothing was deleted" in r[0][0], r[0][0])
-        # Second rounds (MailSender's continuations): nobody gets the same email twice, and the daily limit (its pacer).
-        post("/mock/tracking?on=1")
-        run("manage", [("create_list", {"name": "Γύρος"}), ("create_list", {"name": "Στάλθηκε · Α"}),
-                       ("import_contacts", {"rows": [{"email": f"r{i}@example.com", "name": f"R{i}"} for i in (1, 2, 3)], "lists": ["Γύρος"]}),
-                       ("change_lists", {"emails": ["r1@example.com", "r2@example.com"], "action": "add", "lists": ["Στάλθηκε · Α"]})])
-        record = next(l["id"] for l in lm("GET", "/api/lists")["results"] if l["name"] == "Στάλθηκε · Α")
-        _, r = run("manage", [("create_campaign", {"name": "Διάλεξη", "subject": "Πρόσκληση", "lists": ["Γύρος"], "body": "<p>x</p>"}),
-                              ("create_campaign", {"name": "Αντίγραφο: Διάλεξη (B)", "subject": "Πρόσκληση", "lists": ["Γύρος"], "body": "<p>x</p>",
-                                                   "continues": ["Διάλεξη"]})])
-        first = int(re.search(r"#(\d+)", r[0][0]).group(1))
-        check("a campaign can continue a draft made just before it, leaving out who that one will reach", not r[1][1]
-              and f"ms:continues:{first}" in lm("GET", f"/api/campaigns/{int(re.search(r'#(\d+)', r[1][0]).group(1))}")["tags"], r[1][0])
-        _, r = run("send", [("start_campaign", {"campaign": str(first), "recipients": 3})])
-        post(f"/mock/record?campaign={first}&list={record}")            # MailSender's record: r1 and r2 got it
-        _, r = run("manage", [("create_campaign", {"name": "Αντίγραφο: Διάλεξη (B)", "subject": "Πρόσκληση", "lists": ["Γύρος"], "body": "<p>x</p>"}),
-                              ("check_already_sent", {"campaigns": [str(first)], "lists": ["Γύρος"]})])
-        second = int(re.search(r"#(\d+)", r[0][0]).group(1))
-        check("a copy that would reach people again is flagged, saying how to leave them out", f"2 of its recipients already got «Διάλεξη» (#{first}" in r[0][0]
-              and f"continues: [{first}]" in r[0][0], r[0][0])
-        check("check_already_sent counts who already got it and who has not", not r[1][1] and "3 contacts Γύρος reaches, 2 already got" in r[1][0]
-              and "1 have not" in r[1][0], r[1][0])
-        lm("PUT", f"/api/campaigns/{second}", {**lm("GET", f"/api/campaigns/{second}"), "lists": [l["id"] for l in lm("GET", f"/api/campaigns/{second}")["lists"]], "media": [7]})
-        _, r = run("manage", [("update_campaign", {"campaign": str(second), "continues": [str(first)], "name": "Διάλεξη (B)"}), ("get_campaign", {"campaign": str(second)})])
-        camp = lm("GET", f"/api/campaigns/{second}")
-        check("continues marks it as a continuation, and it reaches only who did not get the first", not r[0][1] and f"ms:continues:{first}" in camp["tags"]
-              and "2 of its 3 contacts already got" in r[0][0] and "reaches about 1" in r[0][0] and "Warning" not in r[0][0], [r[0][0], camp["tags"]])
-        check("an update keeps the campaign's attachments", [x["id"] for x in camp.get("media") or []] == [7], camp.get("media"))
-        check("get_campaign shows the continuation", "It continues #" in r[1][0] and "reaches about 1" in r[1][0], r[1][0])
-        _, r = run("manage", [("update_campaign", {"campaign": str(second), "continues": [str(second)]}), ("sending_capacity", {"emails": 500})])
-        check("a campaign cannot continue itself", r[0][1] and "itself" in r[0][0], r[0][0])
-        check("sending_capacity gives the limit, the room and when more emails could go out", not r[1][1] and "1500 emails in any 25 hours" in r[1][0]
-              and "Room now: 100" in r[1][0] and "could go out around" in r[1][0] and "no need to split" in r[1][0], r[1][0])
-        _, r = run("send", [("start_campaign", {"campaign": str(second), "recipients": 3})])
-        check("starting a continuation needs the count without who already got it", r[0][1] and "reaches 1 contacts" in r[0][0], r[0][0])
-        post("/mock/pacer?held=1")
-        _, r = run("send", [("start_campaign", {"campaign": str(second), "recipients": 1})])
-        check("when Gmail's limit has no room, MailSender holds it and the model is told it starts by itself", not r[0][1] and "did not start" in r[0][0]
-              and "starts it by itself" in r[0][0] and sent()[-1] == {"kind": "held", "campaign": second}, r[0][0])
-        post("/mock/pacer?held=0")
-        lm("PUT", f"/api/campaigns/{first}", {**lm("GET", f"/api/campaigns/{first}"), "lists": [l["id"] for l in lm("GET", f"/api/campaigns/{first}")["lists"]],
-                                                "media": [7], "tags": ["ms:tracking", "ms:person", "νέα"], "body": "<p>x</p>\n{{ TrackView }}"})
-        _, r = run("manage", [("copy_campaign", {"campaign": str(first)}), ("copy_campaign", {"campaign": str(first), "lists": ["Γύρος"]})])
-        check("copy_campaign needs new recipients", r[0][1] and "say who the copy goes to" in r[0][0], r[0][0])
-        copy = lm("GET", f"/api/campaigns/{int(re.search(r'#(\d+)', r[1][0]).group(1))}") if not r[1][1] else {}
-        check("a copy keeps subject, text, attachments and tracking, continues the original and reaches only who did not get it", not r[1][1]
-              and copy["subject"] == "Πρόσκληση" and [x["id"] for x in copy["media"]] == [7] and {"ms:tracking", "ms:person", "νέα", f"ms:continues:{first}"} <= set(copy["tags"])
-              and copy["body"].count("{{ TrackView }}") == 1 and "reaches about 1" in r[1][0] and "file7.pdf" in r[1][0], [r[1][0], copy])
         r = run("manage", [("overview", {})], token="wrong")[1]
         check("a wrong token is reported clearly", r[0][1] and "refused the API user" in r[0][0], r[0][0])
         r = run("manage", [("overview", {})], user="")[1]
