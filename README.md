@@ -36,8 +36,9 @@ The server is one Python file using only the standard library, so there is nothi
   rights per person, and a waiting line takes turns on the one model.
 - **Help for the agent.** Plans as checklists, questions with choices, goals it keeps working towards, scheduled tasks,
   skills it saves and reuses, and a check after every edit that the file still parses.
-- **Optional tools.** Web search, a browser the agent drives, pictures (ComfyUI), voices, music, sound effects, video
-  editing and Blender, each installed with one button in Account & settings → Tools & setup.
+- **Optional tools.** Web search, a browser the agent drives, pictures ([ComfyUI](https://github.com/Comfy-Org/ComfyUI)),
+  voices, music, sound effects, video editing and [Blender](https://www.blender.org), each installed with one button in
+  Account & settings → Tools & setup.
 - **Phones too.** One section at a time, with big touch targets.
 
 ## Screenshots
