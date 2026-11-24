@@ -45,7 +45,7 @@ if [[ ! -f "${DIR}/studio.config.json" && -f "${DIR}/studio.config.example.json"
 fi
 
 if [[ -f "${DIR}/studio.config.json" ]]; then
-  host="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("host", "0.0.0.0"))' "${DIR}/studio.config.json")"
+  host="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("host", "127.0.0.1"))' "${DIR}/studio.config.json")"
   if [[ "${host}" == "127.0.0.1" ]] && ! command -v caddy >/dev/null 2>&1; then
     log "Note: studio.config.json binds Studio to 127.0.0.1, so only this machine can open it (or a web server in front of it, such as Caddy)."
     log "      For other computers on your network, set \"host\": \"0.0.0.0\" in studio.config.json and start Studio again."

@@ -1,9 +1,9 @@
 # Eidoloom Studio — specification (v1)
 
-A browser IDE served from the home server (`dc-server`) that edits real project folders with an AI agent
-powered by local models (Strata profiles and any Ollama model) through the **Ollama Manager gateway**.
+An AI agent harness with a code editor around it, served from your own machine, that edits real project folders
+with an agent powered by the model server you choose (Ollama, llama.cpp, vLLM, LM Studio, Strata, or anything with
+the OpenAI chat API and tool calls).
 Layout: VS Code-like — file tree left, tabbed Monaco editor centre, agent chat right, terminal panel bottom.
-Project folder on the server: `~/Projects/Tools/StrataStudio` (this repository).
 
 ## Hard constraints
 
@@ -12,8 +12,11 @@ Project folder on the server: `~/Projects/Tools/StrataStudio` (this repository).
 - **Frontend: static files** (`web/index.html`, `web/app.js`, `web/app.css`), no build step.
   Monaco and xterm.js load from `https://cdn.jsdelivr.net/npm/...` with pinned versions
   (`monaco-editor@0.52.2` AMD loader `min/vs/loader.js`; `@xterm/xterm@5.5.0`, `@xterm/addon-fit@0.10.0`).
-- Default bind `0.0.0.0:8790` (LAN use) **with mandatory login**. Config file decides.
-- Model gateway = Ollama Manager at `http://127.0.0.1:8787` (configurable). Endpoints used:
+- Default bind `127.0.0.1:8790` (this machine only) **with mandatory login**; `"host": "0.0.0.0"` opens it to the
+  network. Config file decides.
+- Model gateway = the `gateway` setting (Ollama at `http://127.0.0.1:11434` in the example config). Endpoints used
+  (an OpenAI-only server answers `/v1/models` instead of `/api/tags`; the Ollama Manager and Strata's own server add
+  the Strata routes):
   - `GET /api/tags` → `{"models":[{"name","size","details":{...}}]}` (Ollama models + Strata names containing `strata`).
   - `POST /api/show {"model": name}` → `capabilities` array may contain `"tools"`. Strata names always support tools.
     If it fails, tools = null ("unknown", still selectable).
@@ -28,7 +31,7 @@ Project folder on the server: `~/Projects/Tools/StrataStudio` (this repository).
 ## Layout
 
 ```
-StrataStudio/
+eidoloom-studio/
   studio.py            # whole backend (stdlib)
   web/index.html  web/app.js  web/app.css
   studio.config.json   # created on first start if missing
@@ -39,9 +42,9 @@ StrataStudio/
 ## Config (`studio.config.json`, created with defaults)
 
 ```json
-{"host": "0.0.0.0", "port": 8790, "gateway": "http://127.0.0.1:8787",
- "workspace_roots": ["~/Projects"], "default_model": "keystone:strata",
- "max_turns": 40, "command_timeout_s": 120}
+{"host": "127.0.0.1", "port": 8790, "gateway": "http://127.0.0.1:11434",
+ "workspace_roots": ["~/Projects"], "default_model": "",
+ "max_turns": 200, "command_timeout_s": 120, "public_url": ""}
 ```
 Only folders inside `workspace_roots` can be opened (expand `~`, realpath). CLI flags `--host`, `--port`, `--config` override.
 
@@ -67,7 +70,7 @@ Auth: `GET /api/auth/state` → `{"setup_needed","logged_in"}`; `POST /api/auth/
 Config/models:
 - `GET /api/config` → public config + `"gateway_ok"`.
 - `GET /api/models` → `{"models":[{"name","label","kind":"strata"|"ollama","tools":true|false|null,"size"}]}`.
-  Labels: `keystone:strata` → "Keystone (Strata)"; `keystone-sub2:strata` → "Keystone (Strata) + 2 GB subagent pool";
+  Labels: `mymodel:strata` → "Mymodel (Strata)"; `mymodel-sub2:strata` → "Mymodel (Strata) + 2 GB subagent pool";
   hide `-full/-sub4/-sub6:strata` variants and long profile names (`…:125b-strata-…`) except the default
   `qwen3.8-flash-next:125b-strata` → "Strata default profile". Strata first, then Ollama A–Z. Cache 30 s.
 

@@ -54,7 +54,7 @@ SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 WEB_DIR = os.path.join(SCRIPT_DIR, "web")
 
 DEFAULT_CONFIG = {
-    "host": "0.0.0.0",
+    "host": "127.0.0.1",          # this machine only; "0.0.0.0" opens it to the network, so it must be chosen
     "port": 8790,
     "gateway": "http://127.0.0.1:8787",
     "gateway_key": "",
