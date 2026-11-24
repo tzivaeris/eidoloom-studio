@@ -21,7 +21,14 @@ jobs:
           git config --global user.name "Eidoloom tests"
           git config --global user.email "tests@example.com"
       - name: Backend tests
-        run: python3 tests/test_backend.py
+        run: |
+          set +e
+          python3 tests/test_backend.py 2>&1 | tee test-output.txt
+          status=${PIPESTATUS[0]}
+          # each failing check becomes an annotation, readable on the run's page without opening the log
+          grep -E '^\s*FAIL|Error|Traceback' test-output.txt | head -40 | sed 's/^\s*/::error title=Failed check::/'
+          tail -3 test-output.txt
+          exit $status
 
   browser:
     runs-on: ubuntu-24.04
@@ -46,4 +53,11 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Browser tests
         working-directory: tests/browser
-        run: node run.mjs
+        run: |
+          set +e
+          node run.mjs 2>&1 | tee test-output.txt
+          status=${PIPESTATUS[0]}
+          # each failing check becomes an annotation, readable on the run's page without opening the log
+          grep -E '^\s*FAIL|Error|Traceback' test-output.txt | head -40 | sed 's/^\s*/::error title=Failed check::/'
+          tail -3 test-output.txt
+          exit $status
