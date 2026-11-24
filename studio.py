@@ -57,7 +57,12 @@ DEFAULT_CONFIG = {
     "host": "0.0.0.0",
     "port": 8790,
     "gateway": "http://127.0.0.1:8787",
-    "gateway_key": "",            # sent as "Authorization: Bearer ..." to model servers that need one (vLLM --api-key, llama.cpp --api-key)
+    "gateway_key": "",
+    "model_names": {},            # model id -> the name people see ("swift-1.5-iq3_xxs": "Keystone"); Account & settings → Models
+    "strata_idle_minutes": 15,
+    "strata_dir": "",             # a Strata checkout (e.g. ~/Projects/Tools/Strata): Studio starts its server itself, one profile at a
+                                  # time, on the gateway's port, and switches profiles when a chat picks another; empty: Studio does not
+    "strata_tools_reserve_mib": 9216,   # Graphics card → Tools ready, when Studio starts Strata: VRAM left free for pictures and voices    # Strata's own server (no Manager): Studio unloads the model after this long without requests; 0 never            # sent as "Authorization: Bearer ..." to model servers that need one (vLLM --api-key, llama.cpp --api-key)
     "workspace_roots": ["~/Projects"],
     "default_model": "keystone:strata",
     "max_turns": 40,
@@ -860,7 +865,7 @@ def external_activity_loop():
     while True:
         time.sleep(5)
         try:
-            lifecycle = gateway_json("GET", "/api/strata/status", timeout=4).get("lifecycle") or {}
+            lifecycle = strata_status(timeout=4).get("lifecycle") or {}
             busy = bool(lifecycle.get("active_requests")) and not APP.active
             external = {"source": lifecycle.get("wake_source") or "another app"} if busy else None
         except (OSError, ValueError, http.client.HTTPException):
@@ -898,6 +903,7 @@ class App:
         self.runs = collections.OrderedDict()
         self.active = {}                       # workspace id -> Run
         self.models_cache = {"t": 0.0, "models": [], "ok": False}
+        self.strata_models = set()          # models served by Strata's own server (gateway_kind "strata")
         self.gateway_kind = ""            # "ollama" (Ollama or the Manager) or "openai" (llama.cpp, vLLM, LM Studio), from the last model list
         self.stream_chars = 0                  # model text streamed so far, for the dashboard's speed gauge
         self.stream_at = 0.0
@@ -1060,16 +1066,43 @@ def strata_hidden(name):
     return bool(re.search(r":[^:]*strata-", name))       # long profile names
 
 
+def model_label(name, default):
+    """The name an admin gave the model (config model_names), else the default."""
+    given = (APP.cfg.get("model_names") or {}).get(name)
+    return given if isinstance(given, str) and given.strip() else default
+
+
+def strata_direct_label(name):
+    """ "swift-1.5-iq3_xxs" → "Swift 1.5 IQ3_XXS (Strata)"."""
+    words = [w.upper() if "_" in w or re.fullmatch(r"[a-z]*\d[a-z\d]*", w) and not re.fullmatch(r"[\d.]+", w) else w.capitalize()
+             for w in re.split(r"[-\s]+", name.split(":")[0]) if w]
+    return " ".join(words) + " (Strata)"
+
+
 def fetch_models():
+    profiles = strata_profiles()
+    if profiles:              # Studio starts Strata itself: every profile is a model, whether or not its server runs now
+        APP.strata_models, APP.gateway_kind = set(profiles), "strata"
+        return sorted(({"name": name, "label": model_label(name, strata_direct_label(name)), "kind": "strata", "tools": True,
+                        "vision": bool(p["config"].get("vision")), "size": None, "direct": True, "profile": p["stem"]}
+                       for name, p in profiles.items()), key=lambda m: m["label"].lower())
     try:
         tags = gateway_json("GET", "/api/tags")
         entries = [m for m in tags.get("models", []) if isinstance(m, dict) and m.get("name")]
     except (GatewayStatus, ValueError):
         # llama.cpp, vLLM, LM Studio: no Ollama API, so nothing says whether a model takes tools or pictures
         # (None: tools are offered, pictures accepted, and screenshots are not sent as pictures)
+        listed = openai_models()
+        st = strata_direct_status()
+        if st:                    # Strata's own server: its models take tools and, with its picture reader, pictures
+            APP.strata_models = {m["name"] for m in listed}
+            APP.gateway_kind = "strata"
+            vision = bool((st.get("vision") or {}).get("enabled"))
+            return [{"name": m["name"], "label": model_label(m["name"], strata_direct_label(m["name"])), "kind": "strata", "tools": True,
+                     "vision": vision, "size": None, "direct": True} for m in listed]
         APP.gateway_kind = "openai"
-        return [{"name": m["name"], "label": m["name"], "kind": "openai", "tools": None, "vision": None, "size": None}
-                for m in openai_models()]
+        return [{"name": m["name"], "label": model_label(m["name"], m["name"]), "kind": "openai", "tools": None, "vision": None, "size": None}
+                for m in listed]
     APP.gateway_kind = "ollama"
 
     def tools_support(name):
@@ -1088,7 +1121,7 @@ def fetch_models():
     out = []
     for m, (t, vision) in zip(visible, tools):
         strata = "strata" in m["name"].lower()
-        out.append({"name": m["name"], "label": strata_label(m["name"]) if strata else m["name"],
+        out.append({"name": m["name"], "label": model_label(m["name"], strata_label(m["name"]) if strata else m["name"]),
                     "kind": "strata" if strata else "ollama", "tools": t, "vision": vision, "size": m.get("size")})
     out.sort(key=lambda m: (m["kind"] != "strata", m["name"].lower()))
     return out
@@ -2557,12 +2590,13 @@ def note_load_finished(model, strata):
 
 def watch_model_load(run, done):
     """While a run waits for a Strata model's first reply, shows its loading progress in the chat."""
-    if "strata" not in run.model:
+    if not is_strata_model(run.model):
         return
+    strata_loading(run.model)
     shown, failures = False, 0
     while not done.wait(0.3 if not shown and failures == 0 else 1.5):
         try:
-            strata = gateway_json("GET", "/api/strata/status", timeout=5)
+            strata = strata_status(timeout=5)
         except (OSError, ValueError, http.client.HTTPException):
             failures += 1
             if failures >= 3:         # no Manager status to follow
@@ -2580,7 +2614,7 @@ def watch_model_load(run, done):
         run.emit("status", text="Loading model…", load=progress)
     if shown:                         # the reply came before the loop saw the load end
         try:
-            note_load_finished(run.model, gateway_json("GET", "/api/strata/status", timeout=5))
+            note_load_finished(run.model, strata_status(timeout=5))
         except (OSError, ValueError, http.client.HTTPException):
             pass
 
@@ -2589,9 +2623,11 @@ def gateway_state():
     """(the Manager's Strata status or {}, the loaded models from /api/ps, or None for a server with only the OpenAI
     API). Raises when the gateway does not answer at all."""
     try:
-        strata = gateway_json("GET", "/api/strata/status", timeout=5)
+        strata = strata_status(timeout=5)
     except (GatewayStatus, ValueError):
         strata = {}
+    if strata.get("direct"):
+        return strata, []
     try:
         return strata, gateway_json("GET", "/api/ps", timeout=5).get("models", [])
     except (GatewayStatus, ValueError):
@@ -2599,10 +2635,312 @@ def gateway_state():
         return strata, None
 
 
+# ---- Strata without the Manager (2026-11-24): when the gateway is Strata's own server (serve/server.py, found by its
+# /v1/status answering "service": "strata"), Studio reads that status and shapes it like the Manager's
+# /api/strata/status, so the dashboard, the loading bar, the session cache and the waiting room work the same. Strata
+# loads the model by itself on a request (auto_load); Studio unloads it after strata_idle_minutes without requests
+# (/v1/unload, strata_idle_loop). One server serves one profile; starting servers and switching profiles is the
+# Manager's job, or the person's.
+STRATA_DIRECT = {"loaded": None, "epoch": None, "loading_since": None, "cpu": None, "log_offset": None}
+
+
+def strata_direct_status(timeout=5):
+    """Strata's own /v1/status, or None when the gateway is not Strata's server."""
+    try:
+        st = gateway_json("GET", "/v1/status", timeout=timeout)
+    except (OSError, ValueError, http.client.HTTPException):
+        return None
+    return st if isinstance(st, dict) and st.get("service") == "strata" else None
+
+
+def is_strata_model(model):
+    """A Strata model, named by the Manager (…:strata) or served by Strata's own server."""
+    return "strata" in (model or "") or (APP is not None and APP.gateway_kind == "strata" and model in APP.strata_models)
+
+
+def gateway_base():
+    parts = urllib.parse.urlsplit(APP.cfg["gateway"])
+    path = parts.path.rstrip("/")
+    return f"{parts.scheme}://{parts.netloc}{path[:-3] if path.endswith('/v1') else path}"
+
+
+def strata_manager_shape(st):
+    """Strata's own status in the shape of the Manager's /api/strata/status, plus the original under "direct"."""
+    loaded, now = bool(st.get("loaded")), time.time()
+    with APP.lock:
+        d = STRATA_DIRECT
+        if loaded and not d["loaded"]:
+            d["epoch"] = now                        # a new engine instance: what it held before is gone
+        d["loaded"] = loaded
+        if loaded:
+            d["loading_since"] = None
+        loading = d["loading_since"]
+    act, t = st.get("activity") or {}, st.get("last_timings") or {}
+    minutes = float(APP.cfg.get("strata_idle_minutes") or 0)
+    last = act.get("last_request_at")
+    ctx = (st.get("context") or {}).get("native") or st.get("cache_max_tokens")
+    used = sum(int(t.get(k) or 0) for k in ("cache_n", "prompt_n", "predicted_n"))
+    return {"running": loaded, "health": {"loaded": loaded}, "base_url": gateway_base(),
+            "server_processes": [{"pid": f"strata-{st.get('started')}-{d['epoch']}"}] if loaded else [],
+            "job": {"kind": "start", "state": "running", "started_at": loading, "output": strata_log_tail()} if loading and not loaded else {},
+            "lifecycle": {"active_requests": act.get("in_flight") or 0, "idle_timeout_minutes": minutes or None, "auto_start": True,
+                          "next_unload_at": last + minutes * 60 if loaded and last and minutes and not act.get("in_flight") else None},
+            "last_generation": {"context_tokens": ctx, "context_percent": round(used / ctx * 100, 1) if used and ctx else None,
+                                "tokens_per_second": t.get("predicted_per_second")},
+            "direct": st}
+
+
+def strata_status(timeout=5):
+    """The Strata engine's state as the Manager reports it, from the Manager or from Strata's own server. Raises like
+    gateway_json; GatewayStatus(404) when the gateway is neither."""
+    if APP.gateway_kind != "strata":
+        try:
+            return gateway_json("GET", "/api/strata/status", timeout=timeout)
+        except GatewayStatus as exc:
+            if exc.status != 404:
+                raise
+    st = strata_direct_status(timeout)
+    if st is None and strata_dir():        # Studio starts Strata: a server that is down is a model that is not loaded
+        st = {"service": "strata", "model": STRATA_PROC.get("model"), "loaded": False, "activity": {}}
+    if st is None:
+        if APP.gateway_kind == "strata":
+            gateway_json("GET", "/v1/models", timeout=timeout)     # raises the real reason (nothing answers, or refused)
+        raise GatewayStatus(404)
+    return strata_manager_shape(st)
+
+
+def strata_loading(model):
+    """A run is about to wait for Strata's own server, which loads the model by itself: from now on that is a load."""
+    if APP.gateway_kind == "strata" and model in APP.strata_models:
+        with APP.lock:
+            if not STRATA_DIRECT["loaded"] and not STRATA_DIRECT["loading_since"]:
+                STRATA_DIRECT["loading_since"] = time.time()
+                profile = strata_profiles().get(model) if strata_dir() else None
+                try:
+                    STRATA_DIRECT["log_offset"] = os.path.getsize(profile["config"]["log"]) if profile and profile["config"].get("log") else None
+                except OSError:
+                    STRATA_DIRECT["log_offset"] = 0
+
+
+def cpu_percent():
+    """The machine's CPU use since the last call, from /proc/stat (Strata's own status does not give it)."""
+    try:
+        with open("/proc/stat") as fh:
+            parts = [int(x) for x in fh.readline().split()[1:]]
+    except (OSError, ValueError):
+        return None
+    idle, total = parts[3] + (parts[4] if len(parts) > 4 else 0), sum(parts)
+    prev, STRATA_DIRECT["cpu"] = STRATA_DIRECT["cpu"], (idle, total)
+    if not prev or total <= prev[1]:
+        return None
+    return round(100 * (1 - (idle - prev[0]) / (total - prev[1])), 1)
+
+
+def strata_direct_metrics(st):
+    """The dashboard's metrics from Strata's own status: the card and RAM, in the Manager's field names."""
+    machine = st.get("machine") or {}
+    gpu, ram = machine.get("gpu") or {}, machine.get("ram") or {}
+    total, used = (ram.get("total_gib") or 0) * 2 ** 30, (ram.get("used_gib") or 0) * 2 ** 30
+    return {"system": {"used": used, "total": total, "available": max(0, total - used), "cpu_percent": cpu_percent()} if total else {},
+            "gpu": {"gpu_busy": gpu.get("util_pct"), "vram_used": (gpu.get("used_mib") or 0) * MIB, "vram_total": (gpu.get("total_mib") or 0) * MIB,
+                    "gpu_temps": {"junction": gpu.get("temp_c")} if gpu.get("temp_c") is not None else {}, "gpu_power_w": gpu.get("power_w"),
+                    "name": gpu.get("name")} if gpu else {},
+            "process": {}, "placement": {}, "strain": None, "runtime": {"engine": st.get("engine"), "direct": True}}
+
+
+# ---- Strata started by Studio (2026-11-24, part 2): with config strata_dir, Studio runs Strata's own server itself
+# (serve/server.py --lazy, so it binds at once and loads the model on the first request) on the gateway's port, one
+# profile (strata-<name>.json) at a time. Every profile is a model in the picker; a chat that picks another profile
+# stops the server and starts it with that one, once no other run uses Strata. Studio never edits the profiles: it
+# starts from its own copy in data/strata/ (the Graphics card choice changes --vram-reserve-mib there). The engine's
+# log (the profile's "log") gives the loading bar its steps. Without strata_dir all of this is off.
+STRATA_PROC = {"proc": None, "model": None, "lock": threading.RLock(), "profiles": None, "seen": None}
+
+
+def strata_dir():
+    path = os.path.expanduser(APP.cfg.get("strata_dir") or "") if APP is not None else ""
+    return path if path and os.path.isfile(os.path.join(path, "serve", "server.py")) else ""
+
+
+def strata_profiles():
+    """{model_name: {"path", "stem", "config"}} of the Strata checkout's profiles, read again when they change."""
+    folder = strata_dir()
+    if not folder:
+        return {}
+    files = sorted(glob.glob(os.path.join(folder, "strata-*.json")))
+    seen = [(f, os.path.getmtime(f)) for f in files]
+    if STRATA_PROC["seen"] == seen and STRATA_PROC["profiles"] is not None:
+        return STRATA_PROC["profiles"]
+    out = {}
+    for f in files:
+        config = read_json(f, None)
+        if isinstance(config, dict) and isinstance(config.get("model_name"), str) and isinstance(config.get("args"), list):
+            out.setdefault(config["model_name"], {"path": f, "stem": os.path.basename(f)[len("strata-"):-len(".json")], "config": config})
+    STRATA_PROC.update(profiles=out, seen=seen)
+    return out
+
+
+def strata_port():
+    return urllib.parse.urlsplit(APP.cfg["gateway"]).port or 80
+
+
+def strata_reserve_args(args, reserve):
+    args = [str(a) for a in args]
+    if reserve is None:
+        return args
+    if "--vram-reserve-mib" in args:
+        i = args.index("--vram-reserve-mib")
+        return args[:i + 1] + [str(int(reserve))] + args[i + 2:]
+    return args + ["--vram-reserve-mib", str(int(reserve))]
+
+
+def strata_card_reserve():
+    """The VRAM reserve for the Graphics card choice: Tools ready leaves room for the tools; Strata first, the profile's own."""
+    return int(APP.cfg.get("strata_tools_reserve_mib") or 9216) if read_json(card_path(), {}).get("mode") == "tools" else None
+
+
+def strata_start(model, run=None):
+    """Starts Strata's server with the model's profile (the caller holds STRATA_PROC["lock"]). Raises ModelError."""
+    profile = strata_profiles().get(model)
+    if not profile:
+        raise ModelError(f"no Strata profile serves {model}")
+    folder = strata_dir()
+    python = os.path.join(folder, ".venv", "bin", "python")
+    if not os.path.isfile(python):
+        raise ModelError(f"Strata's Python is missing ({python}): run Strata's setup first")
+    config = dict(profile["config"])
+    reserve = strata_card_reserve()
+    config["args"] = strata_reserve_args(config["args"], reserve)
+    if isinstance(config.get("user_args"), list):
+        config["user_args"] = strata_reserve_args(config["user_args"], reserve)
+    own = os.path.join(APP.data_dir, "strata", f"strata-{profile['stem']}.json")
+    write_json_atomic(own, config, private=True)
+    log = open(os.path.join(APP.data_dir, "strata", "server.log"), "ab")
+    if run:
+        run.emit("status", text=f"Starting Strata with {model_label(model, strata_direct_label(model))}…")
+    proc = subprocess.Popen([python, os.path.join(folder, "serve", "server.py"), "--engine", "strata", "--config", own,
+                             "--host", "127.0.0.1", "--port", str(strata_port()), "--lazy"],
+                            cwd=folder, stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
+    log.close()
+    STRATA_PROC.update(proc=proc, pid=proc.pid, model=model, reserve_started=reserve)
+    deadline = time.time() + 120
+    while time.time() < deadline:
+        if proc.poll() is not None:
+            raise ModelError(f"Strata's server stopped as it started (exit {proc.returncode}); see data/strata/server.log")
+        if strata_direct_status(timeout=2):
+            print(f"Strata started with {model} on port {strata_port()}", flush=True)
+            return
+        time.sleep(0.5)
+    raise ModelError("Strata's server did not answer within 2 minutes; see data/strata/server.log")
+
+
+def strata_adopt():
+    """The pid of a Strata server started from Studio's own copy of a profile (data/strata/), say by a Studio that was
+    stopped without systemd ending its processes; None when the server on the port is someone else's."""
+    mine = os.path.join(APP.data_dir, "strata") + os.sep
+    for pid in os.listdir("/proc"):
+        if pid.isdigit():
+            cmd = process_command(pid)
+            if "serve/server.py" in cmd and mine in cmd and f"--port {strata_port()}" in cmd:
+                return int(pid)
+    return None
+
+
+def strata_running_pid():
+    proc = STRATA_PROC.get("proc")
+    if proc is not None:
+        return proc.pid if proc.poll() is None else None
+    pid = STRATA_PROC.get("pid")
+    return pid if pid and os.path.exists(f"/proc/{pid}") else None
+
+
+def strata_stop():
+    """Stops the Strata server Studio started (the caller holds the lock). A server someone else started is left alone."""
+    pid = strata_running_pid()
+    if pid:
+        for sig, wait in ((signal.SIGTERM, 60), (signal.SIGKILL, 10)):
+            try:
+                os.killpg(pid, sig)
+            except OSError:
+                try:
+                    os.kill(pid, sig)
+                except OSError:
+                    break
+            deadline = time.time() + wait
+            while time.time() < deadline and (os.path.exists(f"/proc/{pid}") and (STRATA_PROC.get("proc") is None or STRATA_PROC["proc"].poll() is None)):
+                time.sleep(0.2)
+            if not os.path.exists(f"/proc/{pid}") or (STRATA_PROC.get("proc") is not None and STRATA_PROC["proc"].poll() is not None):
+                break
+        print(f"Strata stopped ({STRATA_PROC.get('model')})", flush=True)
+    STRATA_PROC.update(proc=None, pid=None, model=None)
+    with APP.lock:
+        STRATA_DIRECT.update(loaded=None, loading_since=None)
+
+
+def strata_ensure(run):
+    """Before a request to a Strata model when Studio starts Strata: the server runs with that model's profile."""
+    if not strata_dir() or run.model not in strata_profiles():
+        return
+    with STRATA_PROC["lock"]:
+        st = strata_direct_status(timeout=3)
+        if st and st.get("model") == run.model:
+            return
+        mine = bool(strata_running_pid())
+        if st and not mine:
+            pid = strata_adopt()
+            if pid:                        # started by an earlier Studio from its own copy: Studio's again
+                STRATA_PROC.update(proc=None, pid=pid, model=st.get("model"))
+                mine = True
+        if st and not mine:
+            raise ModelError(f"another program serves Strata ({st.get('model')}) on port {strata_port()}; stop it, or use another port")
+        if st:
+            others = [r for r in APP.active.values() if r is not run and is_strata_model(r.model) and r.model != run.model]
+            if others or (st.get("activity") or {}).get("in_flight"):
+                raise ModelError(f"Strata is working with {st.get('model')} for another run; try again when it finishes")
+            if run:
+                run.emit("status", text=f"Switching Strata from {st.get('model')} to {run.model}…")
+            strata_stop()
+        strata_start(run.model, run)
+
+
+def strata_log_tail():
+    """What the engine has written to its log since the load began (the loading bar's steps)."""
+    profile = strata_profiles().get(STRATA_PROC.get("model") or "") if strata_dir() else None
+    path, offset = (profile or {}).get("config", {}).get("log"), STRATA_DIRECT.get("log_offset")
+    if not path or offset is None:
+        return ""
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(offset)
+            return fh.read(256 * 1024).decode("utf-8", "replace")
+    except OSError:
+        return ""
+
+
+def strata_idle_loop():
+    """Strata's own server keeps the model loaded; Studio unloads it after strata_idle_minutes without requests, when no
+    run of Studio works, as the Manager does for its Strata."""
+    while True:
+        time.sleep(float(APP.cfg.get("strata_idle_check_s") or 30))
+        minutes = float(APP.cfg.get("strata_idle_minutes") or 0)
+        if APP.gateway_kind != "strata" or minutes <= 0 or APP.active:
+            continue
+        st = strata_direct_status()
+        act = (st or {}).get("activity") or {}
+        last = act.get("last_request_at")
+        if not st or not st.get("loaded") or act.get("in_flight") or not last or time.time() - last < minutes * 60:
+            continue
+        try:
+            gateway_json("POST", "/v1/unload", {}, timeout=60)
+            print(f"Strata unloaded after {minutes:g} min without requests", flush=True)
+        except (OSError, ValueError, http.client.HTTPException) as exc:
+            print(f"Strata did not unload: {exc}", flush=True)
+
+
 def model_state(model, strata, loaded, streaming, run_active):
     """Summarize what the model is doing as (state, label, detail). States drive the dashboard's colours."""
     match = next((m for m in loaded if m.get("name") == model or m.get("model") == model), None)
-    if "strata" not in model:
+    if not is_strata_model(model):
         if not match:
             return "off", "Not loaded", "Loads on the next request"
         return ("work", "Generating", "") if streaming else ("work", "Working", "") if run_active else ("idle", "Loaded", "")
@@ -2757,8 +3095,10 @@ def memory_residents(loaded, gpu):
 # machine and saves the one an admin picks into studio.config.json, without a restart.
 # ---------------------------------------------------------------------------
 
-MODEL_SERVER_GUESSES = (("Ollama", 11434), ("Ollama Manager", 8787), ("llama.cpp", 8080), ("vLLM", 8000), ("LM Studio", 1234))
-MODEL_SERVER_KINDS = {"manager": "Ollama Manager", "ollama": "Ollama", "openai": "OpenAI API (llama.cpp, vLLM, LM Studio…)"}
+MODEL_SERVER_GUESSES = (("Ollama", 11434), ("Ollama Manager", 8787), ("llama.cpp or Strata", 8080), ("Strata", 18080), ("vLLM", 8000),
+                        ("LM Studio", 1234))
+MODEL_SERVER_KINDS = {"manager": "Ollama Manager", "ollama": "Ollama", "strata": "Strata",
+                      "openai": "OpenAI API (llama.cpp, vLLM, LM Studio…)"}
 
 
 def gateway_same(a, b):
@@ -2829,6 +3169,12 @@ def probe_model_server(url, key="", timeout=3):
                 out["error"] = f"It answered, but not as a model server (HTTP {status} for /v1/models)"
                 return out
             names, kind = listed(data, "data", "id"), "openai"
+            try:                  # Strata's own server says so in /v1/status
+                status, data = get("/v1/status")
+                if status == 200 and json.loads(data).get("service") == "strata":
+                    kind = "strata"
+            except (OSError, ValueError, AttributeError, http.client.HTTPException):
+                pass
     except ConnectionRefusedError:
         out["error"] = "Nothing answers at that address"
         return out
@@ -2864,6 +3210,30 @@ def model_server_key(req):
     if not isinstance(key, str) or len(key) > 4096 or any(c in key for c in "\r\n"):
         raise ApiError(400, "the key must be one line of text")
     return key.strip()
+
+
+@route("POST", "/api/admin/model_names", admin=True)
+def api_model_names(req):
+    """Names people see for models (Keystone for swift-1.5-iq3_xxs), kept in studio.config.json; an empty name removes one."""
+    name, label = req.field("name"), req.field("label")
+    if not isinstance(name, str) or not name.strip() or len(name) > 200:
+        raise ApiError(400, "name is required")
+    if not isinstance(label, str) or len(label) > 60 or any(c in label for c in "\r\n"):
+        raise ApiError(400, "the new name must be one line of at most 60 characters")
+    name, label = name.strip(), label.strip()
+    with APP.mcp_edit:
+        stored = read_json(APP.config_path, {}) or {}
+        names = dict(stored.get("model_names") or {})
+        if label:
+            names[name] = label
+        else:
+            names.pop(name, None)
+        stored["model_names"] = names
+        write_json_atomic(APP.config_path, stored, private=bool(stored.get("gateway_key")))
+        APP.cfg["model_names"] = names
+    with APP.lock:
+        APP.models_cache = {"t": 0.0, "models": [], "ok": False}
+    return {"model_names": names, "models": get_models()[0]}
 
 
 @route("POST", "/api/admin/model_server/test", admin=True)
@@ -2918,7 +3288,7 @@ def api_model_status(req):
     progress = load_progress(model, strata) if state == "load" and label == "Loading" else None
     if progress:
         out["load"] = progress
-    elif "strata" in model:
+    elif is_strata_model(model):
         note_load_finished(model, strata)
     lifecycle = strata.get("lifecycle") or {}
     out.update(state=state, label=label, detail=detail, active_requests=lifecycle.get("active_requests") or 0,
@@ -2927,7 +3297,13 @@ def api_model_status(req):
     out["cleanup"] = CLEANUP["last"]
     out["strata_idle"] = {"minutes": lifecycle.get("idle_timeout_minutes"), "unload_at": lifecycle.get("next_unload_at")}
     out["metrics"] = None
-    if req.query.get("full") == "1":
+    if req.query.get("full") == "1" and strata.get("direct"):
+        out["metrics"] = strata_direct_metrics(strata["direct"])
+        try:
+            out["metrics"]["residents"] = memory_residents([], {})
+        except OSError:
+            pass
+    elif req.query.get("full") == "1":
         try:
             metrics = gateway_json("GET", "/api/metrics?model=" + urllib.parse.quote(model), timeout=5)
             out["metrics"] = {k: metrics.get(k) for k in ("system", "gpu", "process", "placement", "strain", "runtime")}
@@ -9026,17 +9402,11 @@ def plain_completion(run, payload):
 
 def engine_context_tokens():
     """How much the loaded engine can hold, from the Manager. None for gateways that do not say."""
-    parts = urllib.parse.urlsplit(APP.cfg["gateway"])
-    conn = http.client.HTTPConnection(parts.hostname, parts.port, timeout=2)
     try:
-        conn.request("GET", "/api/strata/status")
-        resp = conn.getresponse()
-        status = json.loads(resp.read()) if resp.status == 200 else {}
-        return (status.get("last_generation") or {}).get("context_tokens") or None
+        status = strata_status(timeout=2)
     except (OSError, ValueError, http.client.HTTPException):
         return None
-    finally:
-        conn.close()
+    return (status.get("last_generation") or {}).get("context_tokens") or None
 
 
 # ---- the session cache (2026-11-12): a reloaded Strata engine re-read a 120K-token chat for about two minutes. Strata
@@ -9056,7 +9426,7 @@ def cache_index_path():
 def engine_identity():
     """{"loaded", "key" (changes with every engine start), "base"} of the Strata engine, or None without a Manager."""
     try:
-        st = gateway_json("GET", "/api/strata/status", timeout=5)
+        st = strata_status(timeout=5)
     except (OSError, ValueError, http.client.HTTPException):
         return None
     procs = st.get("server_processes") or []
@@ -9086,7 +9456,7 @@ def cache_name(sid):
 
 
 def cache_on(run):
-    return bool(APP.cfg["session_cache"]) and "strata" in (run.model or "")
+    return bool(APP.cfg["session_cache"]) and is_strata_model(run.model)
 
 
 def cache_prune(index):
@@ -9260,6 +9630,7 @@ def call_model(run, messages):
     if run.stop:
         raise Stopped()
     release_engines(run)
+    strata_ensure(run)
     cache_restore(run)
     run.emit("status", text="Waiting for the model (it may be loading)…")
     loading_done = threading.Event()
@@ -13842,7 +14213,14 @@ def card_path():
 
 
 def card_pool():
-    """The Manager's pool setting and the share the running engine started with, or None without a Manager."""
+    """The Manager's pool setting and the share the running engine started with, or None without a Manager. When Studio
+    starts Strata itself, the reserve it starts Strata with (Tools ready) instead."""
+    if strata_dir():
+        st = strata_direct_status(timeout=5) or {}
+        reserve = strata_card_reserve()
+        return {"running": bool(st.get("loaded")), "busy": int((st.get("activity") or {}).get("in_flight") or 0),
+                "mode": "fixed" if reserve else "off", "pool_mib": reserve or 0, "keep_ollama": False, "direct": True,
+                "active_mib": (STRATA_PROC.get("reserve_started") or 0) if st and strata_running_pid() else None}
     try:
         status = gateway_json("GET", "/api/strata/status", timeout=5)
     except (OSError, ValueError, http.client.HTTPException):
@@ -13858,7 +14236,10 @@ STRATA_IDLE_CHOICES = (0, 5, 15, 30, 60, 120)     # the Manager's own choices fo
 
 
 def strata_idle_minutes():
-    """The Manager's idle unload for Strata (minutes, 0 = never), or None without a Manager."""
+    """The Manager's idle unload for Strata (minutes, 0 = never), or None without a Manager; Studio's own
+    (strata_idle_minutes) when it talks to Strata's own server."""
+    if APP.gateway_kind == "strata":
+        return float(APP.cfg.get("strata_idle_minutes") or 0)
     try:
         lifecycle = gateway_json("GET", "/api/strata/status", timeout=5).get("lifecycle") or {}
     except (OSError, ValueError, http.client.HTTPException):
@@ -13874,6 +14255,13 @@ def card_strata_idle(req):
     minutes = req.field("minutes")
     if minutes not in STRATA_IDLE_CHOICES or isinstance(minutes, bool):
         raise ApiError(400, "minutes must be one of " + ", ".join(map(str, STRATA_IDLE_CHOICES)))
+    if APP.gateway_kind == "strata":           # Studio's own idle unload for Strata's own server
+        with APP.mcp_edit:
+            stored = read_json(APP.config_path, {}) or {}
+            stored["strata_idle_minutes"] = minutes
+            write_json_atomic(APP.config_path, stored, private=bool(stored.get("gateway_key")))
+            APP.cfg["strata_idle_minutes"] = minutes
+        return card_state()
     try:
         lifecycle = gateway_json("GET", "/api/strata/status", timeout=5).get("lifecycle") or {}
         gateway_json("POST", "/api/strata/runtime_settings", {"auto_start": lifecycle.get("auto_start", True), "idle_timeout_minutes": minutes,
@@ -13997,7 +14385,8 @@ def card_state():
         mode = "tools" if pool and pool["pool_mib"] >= 8192 else "strata"
     runs = [r for r in APP.runs.values() if not r.finished]
     return {"mode": mode, "pending": bool(saved.get("pending")), "pool": pool, "runs": len(runs), "applied_at": saved.get("applied_at"),
-            "strata_idle": strata_idle_minutes()}
+            "strata_idle": strata_idle_minutes(),
+            "strata_server": "studio" if strata_dir() else "own" if APP.gateway_kind == "strata" else "manager"}
 
 
 def card_apply(restart):
@@ -14009,6 +14398,14 @@ def card_apply(restart):
     pool = card_pool()
     if pool is None or (pool["running"] and not restart):
         return False
+    if pool.get("direct"):                     # Studio starts Strata: the next start takes the new reserve
+        with STRATA_PROC["lock"]:
+            if strata_running_pid() or strata_adopt():
+                STRATA_PROC["pid"] = strata_running_pid() or strata_adopt()
+                strata_stop()
+        saved.update(pending=False, applied_at=time.time())
+        write_json_atomic(card_path(), saved)
+        return True
     gateway_json("POST", "/api/strata/pool", {**CARD_MODES[saved["mode"]], "keep_ollama": pool["keep_ollama"]}, timeout=60)
     saved.update(pending=False, applied_at=time.time())
     write_json_atomic(card_path(), saved)
@@ -14338,6 +14735,7 @@ def main():
     threading.Thread(target=external_activity_loop, daemon=True).start()
     threading.Thread(target=backup_loop, daemon=True).start()
     threading.Thread(target=card_loop, daemon=True).start()
+    threading.Thread(target=strata_idle_loop, daemon=True).start()
     note_active()                         # no run survives a restart
     threading.Thread(target=task_loop, daemon=True).start()
     if cfg.get("updates"):

@@ -1938,6 +1938,15 @@ open(os.path.join(d, 'paper.pdf'), 'wb').write(studio.office_convert(os.path.joi
     await page.click('.msrv-acts button:has-text("Test")');
     check('testing an address where nothing answers says so, and changes nothing', await page.waitForSelector('.msrv-result.err', { timeout: 8000 }).then(() => true, () => false)
       && (await page.textContent('.msrv-result')).includes('Nothing answers'), await page.textContent('.msrv-result'));
+    const renameRow = page.locator('.mdl-row', { hasText: 'llama3.2:3b' });
+    await renameRow.locator('.mdl-rename').click();
+    await page.fill('.dialog.sm .dlg-input', 'Little Llama');
+    await page.click('.dialog.sm .btn.primary');
+    check('an admin can give a model the name everyone sees', await page.waitForFunction(() => [...document.querySelectorAll('#model-select option')].some(o => o.textContent.startsWith('Little Llama')), null, { timeout: 5000 }).then(() => true, () => false));
+    await renameRow.locator('.mdl-rename').click();
+    await page.fill('.dialog.sm .dlg-input', '');
+    await page.click('.dialog.sm .btn.primary');
+    check('and an empty name gives it its own name back', await page.waitForFunction(() => ![...document.querySelectorAll('#model-select option')].some(o => o.textContent.startsWith('Little Llama')), null, { timeout: 5000 }).then(() => true, () => false));
     if (process.env.STUDIO_SHOTS) await page.screenshot({ path: path.join(process.env.STUDIO_SHOTS, 'models-pane.png') });
     await page.click('.ac-pane button:has-text("Show all")');
     check('Show all brings every model back', await page.locator('#model-select option[value]:not([value=""]):not([value="__choose"])').count() === before && (await groups()).includes('Codex (ChatGPT)'));

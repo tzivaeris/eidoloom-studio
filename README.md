@@ -58,6 +58,7 @@ The server is one Python file using only the standard library, so there is nothi
    | llama.cpp | `http://127.0.0.1:8080` | Start `llama-server` with `--jinja`, so tool calls work, and a large `-c`. |
    | vLLM | `http://127.0.0.1:8000` | Start it with `--enable-auto-tool-choice` and the model's `--tool-call-parser`. |
    | LM Studio | `http://127.0.0.1:1234` | Start its server in the Developer tab. |
+   | Strata | `http://127.0.0.1:8080` | Its own server; or let Studio start it, see [Works with Strata](#works-with-strata). |
 
    If the server needs a key (`--api-key`), put it in `gateway_key`. An address ending in `/v1` works too.
 
@@ -65,6 +66,38 @@ The server is one Python file using only the standard library, so there is nothi
 
 Pick a model that is good at tool calls, such as Qwen 3 or Qwen 2.5 Coder (7B or larger), Llama 3.1 or later, Mistral
 Small or gpt-oss. Small models (3B and below) often write tool calls as text; Studio tries to recover them.
+
+## Works with Strata
+
+[Strata](https://github.com/Niko1221/Strata) (MIT licence) runs Qwen3.8-Flash-Next, a 125B mixture-of-experts model, on
+an ordinary graphics card with 64 GB of RAM. Eidoloom Studio was built and tested night after night with it, and does
+more with it than with other model servers. Strata is a separate project by its own authors.
+
+**Use a Strata server that is already running.** Point `gateway` at it (`http://127.0.0.1:8080` by default). Studio
+recognises it and then:
+
+- shows a loading bar while Strata loads the model, and its state in the status bar: not loaded, loading, working, idle;
+- reads the graphics card's memory, load, temperature and power, and the context in use, into the dashboard's gauges;
+- saves a long chat's state when a run ends and restores it after a reload, instead of reading the whole chat again
+  (this needs `slot_save_path` in the Strata profile);
+- unloads the model after `strata_idle_minutes` without requests (15), so the card is free for other work;
+- passes pictures to it, and lets you give its model a friendly name (Account & settings → Models → Rename).
+
+**Or let Studio start Strata.** Set `strata_dir` to your Strata folder and `gateway` to a free port, for example:
+
+```json
+"strata_dir": "~/Strata",
+"gateway": "http://127.0.0.1:18090"
+```
+
+Then every profile you made with Strata's setup is a model in the picker. The first message starts Strata with that
+profile, and choosing another profile switches it once nothing else is using Strata. Account & settings → Graphics
+card decides how much of the card Strata leaves free for the picture, voice and music tools: **Strata first** keeps
+the profile's own setting, **Tools ready** leaves 9 GB (`strata_tools_reserve_mib`), applied the next time Strata
+starts. Studio never changes Strata's own profiles; it starts from its own copy.
+
+Agent prompts are long, so give the profile a large context (128K or more), and set `slot_save_path` for the saved
+chats.
 
 ## Configuration
 
@@ -81,6 +114,8 @@ Small or gpt-oss. Small models (3B and below) often write tool calls as text; St
 | `max_turns` | How many model calls one agent run may make. |
 | `command_timeout_s` | How many seconds one command of the agent may run. |
 | `public_url` | The address people use when Studio sits behind a proxy, for invite links. |
+| `strata_dir` | A Strata folder: Studio starts Strata itself, one profile at a time (see above). Empty: it does not. |
+| `strata_idle_minutes` | With Strata, unload the model after this many minutes without requests; `0` never. |
 
 Every other setting and its default is in `DEFAULT_CONFIG` near the top of `studio.py`.
 

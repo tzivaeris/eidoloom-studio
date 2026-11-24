@@ -495,7 +495,8 @@ async function paneCard(box) {
   const gb = mib => `${(mib / 1024).toFixed(mib % 1024 ? 1 : 0)} GB`;
   const paint = d => {
     const pool = d.pool;
-    const now = !pool ? 'The Ollama Manager does not answer, so the current share is unknown.'
+    const now = d.strata_server === 'own' ? 'Studio talks to Strata\'s own server, which someone else started, so the share is the one it started with. To choose it here, let Studio start Strata (strata_dir in studio.config.json).'
+      : !pool ? 'The Ollama Manager does not answer, so the current share is unknown.'
       : !pool.running ? 'Strata is not loaded now; it starts with the chosen share.'
       : pool.active_mib >= 8192 ? `Strata is running with ${gb(pool.active_mib)} kept free for tools.` : 'Strata is running with the whole card.';
     const choices = el('div', { class: 'card-choices', role: 'radiogroup', 'aria-label': 'How the card is shared' }, ...CARD_CHOICES.map(([id, name, text]) =>
@@ -1523,9 +1524,20 @@ function modelServerCard(onSaved) {
         try { const p = await POST('/api/admin/model_server/test', body(key.value || undefined)); say(describe(p), p.ok && p.count ? 'ok' : 'err'); } catch (e) { say(e.message, 'err'); }
       } }, 'Test'),
       el('button', { class: 'btn sm primary', onclick: () => save(addr.value.trim(), key.value || undefined) }, 'Save'), result),
-    el('small', { class: 'muted', text: 'Usual addresses: Ollama :11434, llama.cpp :8080, vLLM :8000, LM Studio :1234, Ollama Manager :8787. An address ending in /v1 works too.' }));
+    el('small', { class: 'muted', text: 'Usual addresses: Ollama :11434, Strata or llama.cpp :8080 (:18080 when the Ollama Manager starts Strata), vLLM :8000, LM Studio :1234, Ollama Manager :8787. An address ending in /v1 works too.' }));
   load();
   return card;
+}
+/* An admin names a model for everyone (config model_names): Keystone for swift-1.5-iq3_xxs. An empty name goes back to
+   the default. (Strata without the Manager, 2026-11-24.) */
+async function renameModel(m, after) {
+  const v = await promptBox(`Name for ${m.name}`, m.label && m.label !== m.name ? m.label : '', 'Keystone');
+  if (v === null || v === undefined || v === false) return;
+  try {
+    await POST('/api/admin/model_names', { name: m.name, label: String(v).trim() });
+    S.models = (await GET('/api/models')).models || S.models; renderModels(); if (after) after();      // the full list, Codex included
+    toast(String(v).trim() ? `${m.name} is now called ${String(v).trim()}` : `${m.name} has its own name again`, 'success', 3000);
+  } catch (e) { errToast(e, 'Could not rename the model'); }
 }
 function paneModels(box) {
   const all = S.models.map(m => m.name);
@@ -1562,6 +1574,7 @@ function paneModels(box) {
           } }),
           el('span', { class: 'mdl-name', text: labelForModel(m) }),
           m.name === S.model ? el('span', { class: 'ac-badge ok', text: 'In use' }) : null,
+          isAdmin() ? el('button', { class: 'btn sm mdl-rename', type: 'button', title: 'Give this model the name people see', onclick: e => { e.preventDefault(); renameModel(m, draw); } }, 'Rename') : null,
           m.label && m.label !== m.name ? el('small', { class: 'muted mdl-id', text: m.name }) : null)));
     }).filter(Boolean));
   };

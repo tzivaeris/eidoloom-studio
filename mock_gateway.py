@@ -11,6 +11,9 @@ Special cases:
   - model name contains "repeat": always calls list_files with the same arguments (exercises the nudge)
   - GET /_mock/requests returns a summary of every chat request received
   - MOCK_CONTEXT_TOKENS in the environment: report that context size on /api/strata/status
+  - MOCK_STRATA=1: Strata's own server with no Manager (MOCK_STRATA_MODEL names its model, MOCK_STRATA_LOG gets the
+    engine's loading lines) (/health, /v1/status, /v1/load, /v1/unload, /slots; GET or POST
+    /_mock/strata reads or changes its state; MOCK_STRATA_LOAD_S makes the first request load for that long)
   - MOCK_OPENAI_ONLY=1: only the OpenAI API (/v1/models, /v1/chat/completions), like llama.cpp, vLLM or LM Studio;
     MOCK_API_KEY then requires that key as a Bearer token
   - a message containing "slow load": the engine pretends to load for LOAD_SECONDS first, with its startup lines
@@ -74,6 +77,26 @@ def strata_status():
 LOCK = threading.Lock()
 COMFY = {"busy": False}
 # The Manager's Subagent pool, for Studio's graphics card setting; off until a test posts /_mock/card.
+# MOCK_STRATA=1: Strata's own server (serve/server.py) with no Manager in front: /health, /v1/models, /v1/status,
+# /v1/load, /v1/unload and /slots, one model, loaded by the first chat request (MOCK_STRATA_LOAD_S seconds).
+STRATA_OWN = {"model": os.environ.get("MOCK_STRATA_MODEL") or "swift-1.5-iq3_xxs", "loaded": False, "started": int(time.time()), "requests": 0, "in_flight": 0,
+              "last_request_at": None, "unloads": 0, "loads": 0, "load_s": float(os.environ.get("MOCK_STRATA_LOAD_S") or 0)}
+
+
+def strata_own_status():
+    s = STRATA_OWN
+    return {"service": "strata", "model": s["model"], "loaded": s["loaded"], "auto_load": True, "engine": "0.1.61",
+            "started": s["started"], "uptime_s": int(time.time()) - s["started"], "cache_max_tokens": 262144,
+            "context": {"native": 262144, "max_positions": 262144}, "vision": {"enabled": True, "available": True, "error": None},
+            "activity": {"requests": s["requests"], "in_flight": s["in_flight"], "last_request_at": s["last_request_at"]},
+            "last_timings": {"cache_n": 1000, "prompt_n": 3000, "predicted_n": 200, "predicted_per_second": 70.0,
+                             "at": s["last_request_at"]} if s["last_request_at"] else None,
+            "vram": {"elastic": False},
+            "machine": {"at": int(time.time()), "gpu": {"name": "AMD Radeon", "used_mib": 24092.0 if s["loaded"] else 900.0,
+                                                        "total_mib": 24560.0, "util_pct": 12, "temp_c": 41.0, "power_w": 88.0},
+                        "ram": {"used_gib": 51.3 if s["loaded"] else 9.0, "total_gib": 62.0}}}
+
+
 # A Strata engine with session files, for Studio's session cache; off until a test posts /_mock/engine.
 ENGINE = {"on": False, "pid": 1, "loaded": True, "saves": [], "restores": [], "files": [], "port": 0}
 CARD = {"on": False, "running": True, "busy": 0, "mode": "fixed", "pool_mib": 9216, "posts": [],
@@ -366,6 +389,50 @@ class Handler(BaseHTTPRequestHandler):
     def body(self):
         return json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
 
+    def strata_own(self):
+        """Strata's own server: answers what it has, refuses Ollama's and the Manager's routes (MOCK_STRATA=1)."""
+        if not os.environ.get("MOCK_STRATA"):
+            return False
+        path, get = self.path, self.command == "GET"
+        if get and path == "/health":
+            self.send_json({"status": "ok"})
+        elif get and path == "/v1/models":
+            self.send_json({"object": "list", "data": [{"id": STRATA_OWN["model"], "object": "model", "owned_by": "strata"}]})
+        elif get and path == "/v1/status":
+            self.send_json(strata_own_status())
+        elif path in ("/v1/load", "/v1/unload") and not get:
+            if self.headers.get("Origin"):                 # Strata refuses a foreign page; Studio sends none
+                self.send_json({"error": {"message": "only from Strata's own page"}}, 403)
+                return True
+            if path == "/v1/unload":
+                STRATA_OWN.update(loaded=False, unloads=STRATA_OWN["unloads"] + 1)
+            else:
+                STRATA_OWN.update(loaded=True, loads=STRATA_OWN["loads"] + 1)
+            self.send_json({"ok": True, "loaded": STRATA_OWN["loaded"]})
+        elif path == "/_mock/strata":
+            if not get:
+                STRATA_OWN.update(self._req)
+            self.send_json(dict(STRATA_OWN))
+        elif path == "/v1/chat/completions" and not get:
+            if not STRATA_OWN["loaded"]:                     # Strata loads the model on a request by itself (auto_load)
+                log = os.environ.get("MOCK_STRATA_LOG")     # the engine's log, which the loading bar reads (LOAD_STEPS)
+                for line in ("[strata] reading the model's weights", "[strata] experts loaded: 512", "[strata] almost ready ..."):
+                    if log:
+                        with open(log, "a") as fh:
+                            fh.write(line + "\n")
+                    time.sleep(STRATA_OWN["load_s"] / 3)
+                STRATA_OWN.update(loaded=True, loads=STRATA_OWN["loads"] + 1)
+            STRATA_OWN.update(in_flight=STRATA_OWN["in_flight"] + 1, requests=STRATA_OWN["requests"] + 1)
+            try:
+                self.chat(self._req)
+            finally:
+                STRATA_OWN.update(in_flight=STRATA_OWN["in_flight"] - 1, last_request_at=int(time.time()))
+        elif (path.startswith("/slots/0?action=") and not get) or path.startswith("/_mock/"):
+            return False                                     # the same session files as the Manager's engine, and the mock's own controls
+        else:
+            self.send_json({"error": {"message": "not found"}}, 404)
+        return True
+
     def openai_only(self):
         """MOCK_OPENAI_ONLY=1 plays llama.cpp, vLLM or LM Studio: no Ollama or Manager API, only /v1/*, and with
         MOCK_API_KEY every request needs that key as a Bearer token."""
@@ -384,7 +451,8 @@ class Handler(BaseHTTPRequestHandler):
         return False
 
     def do_GET(self):
-        if self.openai_only():
+        self._req = {}
+        if self.strata_own() or self.openai_only():
             return
         if self.path == "/api/strata/status" and ENGINE["on"]:
             self.send_json({"running": ENGINE["loaded"], "health": {"loaded": ENGINE["loaded"]}, "base_url": f"http://127.0.0.1:{ENGINE['port']}",
@@ -430,7 +498,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         req = self.body()
-        if self.openai_only():
+        self._req = req
+        if self.strata_own() or self.openai_only():
             return
         if self.path == "/api/show":
             name = req.get("model", "")

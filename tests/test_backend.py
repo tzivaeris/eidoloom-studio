@@ -5552,6 +5552,203 @@ def test_model_servers(tmp):
             proc.terminate()
 
 
+def test_strata_direct(tmp):
+    """Strata's own server as the gateway, with no Manager: names, state, gauges, loading, session cache, idle unload."""
+    print("Strata's own server, without the Manager")
+    folder = os.path.join(tmp, "strata-direct")
+    projects = os.path.join(folder, "projects")
+    os.makedirs(os.path.join(projects, "app"))
+    with open(os.path.join(projects, "app", "a.txt"), "w") as fh:
+        fh.write("hello\n")
+    gw_port, port = free_port(), free_port()
+    gw = subprocess.Popen([sys.executable, os.path.join(ROOT, "mock_gateway.py"), str(gw_port)], stdout=subprocess.DEVNULL,
+                          env={**os.environ, "MOCK_STRATA": "1", "MOCK_STRATA_LOAD_S": "2"})
+    config = os.path.join(folder, "app", "studio.config.json")
+    os.makedirs(os.path.dirname(config))
+    json.dump({"host": "127.0.0.1", "port": port, "gateway": f"http://127.0.0.1:{gw_port}", "workspace_roots": [projects],
+               "user_root": os.path.join(projects, "users"), "max_turns": 10, "command_timeout_s": 20,
+               "strata_idle_minutes": 1000, "strata_idle_check_s": 0.5, "session_cache_dir": os.path.join(folder, "sessions")}, open(config, "w"))
+    servers = [gw]
+
+    def mock(change=None):
+        conn = http.client.HTTPConnection("127.0.0.1", gw_port, timeout=10)
+        conn.request("POST" if change is not None else "GET", "/_mock/strata", json.dumps(change or {}), {"Content-Type": "application/json"})
+        data = json.loads(conn.getresponse().read())
+        conn.close()
+        return data
+
+    def engine():
+        conn = http.client.HTTPConnection("127.0.0.1", gw_port, timeout=10)
+        conn.request("POST", "/_mock/engine", "{}", {"Content-Type": "application/json"})
+        data = json.loads(conn.getresponse().read())
+        conn.close()
+        return data
+    try:
+        wait_port(gw_port, gw)
+        servers.append(start_studio(folder, config, port))
+        admin = Client(port)
+        admin.post("/api/auth/setup", {"password": "admin password"})
+        models = admin.get("/api/models")[1]["models"]
+        m = models[0] if models else {}
+        check("Strata's own server is found: its model is a Strata model that takes tools and pictures, with a readable name",
+              len(models) == 1 and m["name"] == "swift-1.5-iq3_xxs" and m["kind"] == "strata" and m["tools"] and m["vision"]
+              and m["label"] == "Swift 1.5 IQ3_XXS (Strata)", models)
+        s, d, _ = admin.post("/api/admin/model_names", {"name": "swift-1.5-iq3_xxs", "label": "Keystone"})
+        check("an admin names it Keystone, for everyone, in the config", s == 200 and admin.get("/api/models")[1]["models"][0]["label"] == "Keystone"
+              and json.load(open(config))["model_names"] == {"swift-1.5-iq3_xxs": "Keystone"}, d)
+        bob = Client(port)
+        bob.post("/api/auth/signup", {"token": admin.post("/api/admin/invites", {})[1]["token"], "username": "bob", "password": "member password"})
+        check("only admins name models", bob.post("/api/admin/model_names", {"name": "swift-1.5-iq3_xxs", "label": "Mine"})[0] == 403)
+        check("the Model server box calls it Strata", admin.get("/api/admin/model_server")[1]["current"]["kind"] == "strata")
+        st = admin.get("/api/model/status?model=swift-1.5-iq3_xxs&full=1")[1]
+        check("before any request it is Not loaded, and the gauges read the card and RAM from Strata", st.get("state") == "off"
+              and st["label"] == "Not loaded" and st["metrics"]["gpu"]["vram_total"] == 24560 * 2 ** 20 and st["metrics"]["system"]["total"] == 62 * 2 ** 30, st)
+        ws = admin.post("/api/workspace/open", {"path": os.path.join(projects, "app")})[1]["workspace"]["id"]
+        sid = admin.post("/api/agent/sessions", {"ws": ws})[1]["id"]
+        _, events = run_agent(admin, ws, sid, "Please list the files", model="swift-1.5-iq3_xxs", auto_commands=True)
+        loads = [e.get("load") for e in events if e.get("type") == "status" and e.get("load")]
+        check("while Strata loads the model by itself, the chat shows the loading bar", loads and all(0 < l["percent"] < 100 for l in loads), loads[-3:])
+        check("the run finishes", any(e.get("type") == "done" for e in events) and not any(e.get("type") == "error" for e in events),
+              [e.get("type") for e in events][-5:])
+        time.sleep(3.2)                     # "Generating" lasts 3 s after the last streamed text
+        st = admin.get("/api/model/status?model=swift-1.5-iq3_xxs")[1]
+        check("afterwards it is loaded and idle, says when it will unload, and the context gauge is filled",
+              st.get("state") == "idle" and "Unloads in about" in st.get("detail", "") and st["last_generation"]["context_percent"], st)
+        saved = engine()["saves"]
+        check("the chat's engine state is saved when the run ends (session cache through Strata's /slots)", f"studio-{sid}.bin" in saved, saved)
+        mock({"loaded": False})
+        _, events = run_agent(admin, ws, sid, "Please list the files", model="swift-1.5-iq3_xxs", auto_commands=True)
+        check("after Strata unloaded, the next message restores the chat instead of reading it again", f"studio-{sid}.bin" in engine()["restores"]
+              and any("Restored this chat" in (e.get("text") or "") for e in events if e.get("type") == "status"))
+        cfg = json.load(open(config))
+        cfg["strata_idle_minutes"] = 0.02
+        json.dump(cfg, open(config, "w"))
+        stopping = servers.pop()
+        stopping.terminate()
+        stopping.wait(10)
+        servers.append(start_studio(folder, config, port))
+        admin = Client(port)
+        admin.post("/api/auth/login", {"username": "admin", "password": "admin password"})
+        admin.get("/api/models")
+        mock({"loaded": True, "last_request_at": int(time.time()) - 5})
+        deadline = time.time() + 10
+        while time.time() < deadline and mock()["loaded"]:
+            time.sleep(0.3)
+        check("Studio unloads Strata after strata_idle_minutes without requests", mock()["loaded"] is False and mock()["unloads"] >= 1, mock())
+    finally:
+        for proc in servers:
+            proc.terminate()
+
+
+def test_strata_started(tmp):
+    """Studio starts Strata's server itself (strata_dir): every profile is a model, a chat starts its profile, another
+    profile switches the server, the Graphics card choice restarts it with another VRAM reserve."""
+    print("Strata started by Studio")
+    folder = os.path.join(tmp, "strata-started")
+    projects, strata = os.path.join(folder, "projects"), os.path.join(folder, "Strata")
+    os.makedirs(os.path.join(projects, "app"))
+    os.makedirs(os.path.join(strata, "serve"))
+    os.makedirs(os.path.join(strata, ".venv", "bin"))
+    os.symlink(sys.executable, os.path.join(strata, ".venv", "bin", "python"))
+    with open(os.path.join(projects, "app", "a.txt"), "w") as fh:
+        fh.write("hello\n")
+    starts = os.path.join(strata, "starts.jsonl")
+    with open(os.path.join(strata, "serve", "server.py"), "w") as fh:     # plays Strata's server: records the start, runs the mock
+        fh.write("import argparse, json, os, sys\n"
+                 "ap = argparse.ArgumentParser()\n"
+                 "for a in ('--engine', '--config', '--host'): ap.add_argument(a)\n"
+                 "ap.add_argument('--port', type=int)\nap.add_argument('--lazy', action='store_true')\n"
+                 "a, _ = ap.parse_known_args()\ncfg = json.load(open(a.config))\n"
+                 f"open({starts!r}, 'a').write(json.dumps({{'model': cfg['model_name'], 'args': cfg['args'], 'lazy': a.lazy, 'pid': os.getpid(), 'cwd': os.getcwd()}}) + '\\n')\n"
+                 "os.environ.update(MOCK_STRATA='1', MOCK_STRATA_MODEL=cfg['model_name'], MOCK_STRATA_LOAD_S='1.5', MOCK_STRATA_LOG=cfg.get('log', ''))\n"
+                 "import runpy\nsys.argv = ['mock_gateway.py', str(a.port)]\n"        # keeps this command line, as Strata's server does
+                 f"runpy.run_path({os.path.join(ROOT, 'mock_gateway.py')!r}, run_name='__main__')\n")
+    for stem, model, ctx in (("swift-iq3_xxs", "swift-1.5-iq3_xxs", "262144"), ("swift-iq3_xxs-128k", "swift-1.5-iq3_xxs-128k", "131072")):
+        json.dump({"model_name": model, "args": ["--max-context", ctx, "--vram-reserve-mib", "700"], "user_args": ["--vram-reserve-mib", "700"],
+                   "log": os.path.join(strata, f"strata-{stem}.log"), "vision": {"mmproj": "x"}}, open(os.path.join(strata, f"strata-{stem}.json"), "w"))
+        open(os.path.join(strata, f"strata-{stem}.log"), "w").write("[strata] almost ready ... (an old load)\n")
+    port, strata_port = free_port(), free_port()
+    config = os.path.join(folder, "app", "studio.config.json")
+    os.makedirs(os.path.dirname(config))
+    json.dump({"host": "127.0.0.1", "port": port, "gateway": f"http://127.0.0.1:{strata_port}", "workspace_roots": [projects],
+               "user_root": os.path.join(projects, "users"), "max_turns": 10, "command_timeout_s": 20, "strata_dir": strata,
+               "session_cache_dir": os.path.join(folder, "sessions")}, open(config, "w"))
+    servers = []
+
+    def started():
+        return [json.loads(l) for l in open(starts)] if os.path.exists(starts) else []
+
+    def alive(pid):
+        try:
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            return False
+    try:
+        servers.append(start_studio(folder, config, port))
+        admin = Client(port)
+        admin.post("/api/auth/setup", {"password": "admin password"})
+        d = admin.get("/api/models")[1]
+        names = sorted(m["name"] for m in d["models"])
+        check("every Strata profile is a model before any server runs, and the gateway counts as reachable",
+              names == ["swift-1.5-iq3_xxs", "swift-1.5-iq3_xxs-128k"] and all(m["kind"] == "strata" and m["vision"] for m in d["models"])
+              and admin.get("/api/config")[1]["gateway_ok"] and not started(), d)
+        st = admin.get("/api/model/status?model=swift-1.5-iq3_xxs")[1]
+        check("with no server running the model is Not loaded, not Gateway offline", st.get("state") == "off" and st.get("label") == "Not loaded", st)
+        ws = admin.post("/api/workspace/open", {"path": os.path.join(projects, "app")})[1]["workspace"]["id"]
+        sid = admin.post("/api/agent/sessions", {"ws": ws})[1]["id"]
+        _, events = run_agent(admin, ws, sid, "Please list the files", model="swift-1.5-iq3_xxs", auto_commands=True)
+        texts = [e.get("text") or "" for e in events if e.get("type") == "status"]
+        steps = {e["load"]["step"] for e in events if e.get("type") == "status" and e.get("load")}
+        s1 = started()
+        check("a chat with a Strata model starts Strata's server with that profile, unloaded at first (--lazy), in the Strata folder",
+              len(s1) == 1 and s1[0]["model"] == "swift-1.5-iq3_xxs" and s1[0]["lazy"] and os.path.realpath(s1[0]["cwd"]) == os.path.realpath(strata)
+              and any(t.startswith("Starting Strata with") for t in texts), [s1, texts[:4]])
+        check("the loading bar follows the engine's own log lines (this load's, not an old one)",
+              bool(steps & {"Reading weights", "Starting the CPU workers", "Almost ready"}), steps)
+        check("the run finishes", any(e.get("type") == "done" for e in events) and not any(e.get("type") == "error" for e in events), [e.get("type") for e in events][-4:])
+        sid2 = admin.post("/api/agent/sessions", {"ws": ws})[1]["id"]
+        _, events = run_agent(admin, ws, sid2, "Please list the files", model="swift-1.5-iq3_xxs-128k", auto_commands=True)
+        s2 = started()
+        check("a chat with another profile switches Strata: the first server stops, the other starts",
+              len(s2) == 2 and s2[1]["model"] == "swift-1.5-iq3_xxs-128k" and not alive(s1[0]["pid"])
+              and any((e.get("text") or "").startswith("Switching Strata from swift-1.5-iq3_xxs") for e in events if e.get("type") == "status"), s2)
+        check("Studio starts from its own copy of the profile and never edits the original",
+              json.load(open(os.path.join(strata, "strata-swift-iq3_xxs.json")))["args"][-1] == "700"
+              and os.path.exists(os.path.join(folder, "app", "data", "strata", "strata-swift-iq3_xxs-128k.json")))
+        c = admin.post("/api/card", {"mode": "tools"})[1]
+        check("Tools ready while Strata is loaded waits for it to be idle (pending)", c.get("pending") and c.get("strata_server") == "studio"
+              and c["pool"]["direct"], c)
+        c = admin.post("/api/card/restart", {})[1]
+        check("Restart applies it: Studio's Strata server stops", not c.get("pending") and not alive(s2[1]["pid"]), c)
+        _, events = run_agent(admin, ws, sid2, "Please list the files", model="swift-1.5-iq3_xxs-128k", auto_commands=True)
+        s3 = started()
+        check("the next start leaves room for the tools: --vram-reserve-mib 9216", len(s3) == 3
+              and s3[2]["args"][s3[2]["args"].index("--vram-reserve-mib") + 1] == "9216", s3[-1:])
+        c = admin.post("/api/card/strata_idle", {"minutes": 5})[1]
+        check("the idle time is Studio's own here", c.get("strata_idle") == 5 and json.load(open(config))["strata_idle_minutes"] == 5, c)
+        gone = servers.pop()
+        gone.kill()                        # Studio ends without stopping its Strata (no systemd to end both)
+        gone.wait(10)
+        check("the Strata it started keeps running", alive(started()[-1]["pid"]))
+        servers.append(start_studio(folder, config, port))
+        admin = Client(port)
+        admin.post("/api/auth/login", {"username": "admin", "password": "admin password"})
+        _, events = run_agent(admin, ws, sid, "Please list the files", model="swift-1.5-iq3_xxs", auto_commands=True)
+        s4 = started()
+        check("a new Studio takes that server back as its own: it switches it instead of calling it another program's",
+              len(s4) == 4 and s4[3]["model"] == "swift-1.5-iq3_xxs" and not alive(s3[2]["pid"])
+              and not any(e.get("type") == "error" for e in events), [s4[-1:], [e.get("message") for e in events if e.get("type") == "error"]])
+    finally:
+        for proc in servers:
+            proc.terminate()
+        for s in started():
+            try:
+                os.kill(s["pid"], 15)
+            except OSError:
+                pass
+
+
 def main():
     tmp = tempfile.mkdtemp(prefix="studio-test-")
     projects, sample, outside = make_fixture(tmp)
@@ -5607,6 +5804,10 @@ def main():
             test_session_cache(c, projects, gw_port, cfg_path)
         if not only or "test_model_servers" in only:
             test_model_servers(tmp)
+        if not only or "test_strata_direct" in only:
+            test_strata_direct(tmp)
+        if not only or "test_strata_started" in only:
+            test_strata_started(tmp)
         if not only or "test_announce" in only:
             test_announce(c, projects, gw_port)
         if not only or "test_questions" in only:
