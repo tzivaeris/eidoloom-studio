@@ -9,6 +9,8 @@ own, and every change can be undone.
 
 The server is one Python file using only the standard library, so there is nothing to `pip install`.
 
+![Eidoloom Studio: the agent has added a Reset button to a small web page, and its run ends with the files it changed and a summary](docs/screenshots/agent-run.png)
+
 ## What it does
 
 - **An agent that asks first.** Edits arrive as cards with a diff (accept all, some parts, or none); commands as cards
@@ -24,6 +26,20 @@ The server is one Python file using only the standard library, so there is nothi
 - **Optional tools.** Web search, a browser the agent drives, pictures (ComfyUI), voices, music, sound effects, video
   editing and Blender, each installed with one button in Account & settings → Tools & setup.
 - **Phones too.** One section at a time, with big touch targets.
+
+## Screenshots
+
+<p>
+  <img src="docs/screenshots/approval.png" width="49%" alt="An edit waiting for approval: the diff, with Choose parts, Open diff, Reject and Accept">
+  <img src="docs/screenshots/dashboard.png" width="49%" alt="The model dashboard: GPU, VRAM, CPU, RAM, context and temperature gauges, and what is loaded on the card">
+</p>
+<p>
+  <img src="docs/screenshots/phone.png" width="260" alt="Studio on a phone: the chat with the run's summary">
+</p>
+
+Every edit waits for your yes unless you turn on auto-apply (left). The model dashboard shows the card and memory live
+(right). On a phone, Studio shows one section at a time (below). The model is Keystone, a Strata profile, on an AMD
+Radeon RX 7900 XTX.
 
 ## Requirements
 
