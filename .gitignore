@@ -1,0 +1,43 @@
+# Studio's own data: accounts, sessions, chats, attachments, tool server settings (with their keys), backups.
+/data/
+/backups/
+/sandbox/studio/data/
+
+# Python, Node and editor leftovers
+__pycache__/
+*.pyc
+node_modules/
+.venv/
+venv/
+*.log
+.claude/settings.local.json
+
+# Test runs: keep the write-ups, results and scripts; leave out the private Studio instances (with their passwords),
+# the folders the models built, chats, archives and logs.
+/sandbox/runs/**
+!/sandbox/runs/**/
+!/sandbox/runs/**/*.md
+!/sandbox/runs/**/*.py
+!/sandbox/runs/**/*.sh
+!/sandbox/runs/**/results*.json
+/sandbox/runs/**/instance/
+/sandbox/runs/**/instance-preflight/
+/sandbox/runs/**/work/
+/sandbox/runs/**/test-*/
+/sandbox/runs/**/attempt-*/
+/sandbox/runs/**/mica-first-attempt/
+
+# The arena's working copy is rebuilt by `arena.py reset`
+/sandbox/workspace/
+
+# Live container configuration (SearXNG keeps a secret key there)
+/sandbox/mcp-searxng/config/
+
+# The sample database's test passwords (its README calls these private)
+/sandbox/mcp-sample-db/credentials.env
+/sandbox/mcp-sample-db/panel.json
+tools/helper/dist/
+tools/helper/.cache/
+
+# This machine's settings; a new install copies studio.config.example.json on its first start
+/studio.config.json

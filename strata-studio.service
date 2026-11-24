@@ -1,0 +1,15 @@
+[Unit]
+Description=Eidoloom Studio browser IDE (studio.py)
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/Projects/Tools/StrataStudio
+ExecStart=/usr/bin/python3 %h/Projects/Tools/StrataStudio/studio.py
+Restart=on-failure
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+KillSignal=SIGINT
+TimeoutStopSec=15
+
+[Install]
+WantedBy=default.target

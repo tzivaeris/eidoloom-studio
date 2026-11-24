@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Eidoloom Studio">
+  <defs>
+    <linearGradient id="tile" x1="7" y1="4" x2="58" y2="62" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#111b47"/>
+      <stop offset="1" stop-color="#090e2b"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="13" y1="13" x2="43" y2="47" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1687ff"/>
+      <stop offset="1" stop-color="#6557ff"/>
+    </linearGradient>
+    <linearGradient id="violet" x1="15" y1="49" x2="52" y2="20" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6b5cff"/>
+      <stop offset="1" stop-color="#bd3cff"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#tile)"/>
+  <path fill="url(#blue)" d="M12 47V21c0-6.3 3.7-10 10-10h23c5.1 0 8 2.9 8 8v8h-9v-4c0-1.8-.8-2.6-2.6-2.6H24c-1.8 0-2.6.8-2.6 2.6v5.5h17v9h-17V47H12Z"/>
+  <path fill="url(#violet)" d="m12 47 11-10h12L22 50h19.4c1.8 0 2.6-.8 2.6-2.6V26h9v19c0 6.3-3.7 10-10 10H22c-5.4 0-8.7-2.7-10-8Z"/>
+</svg>

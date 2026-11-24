@@ -1,0 +1,18 @@
+[Unit]
+Description=Eidoloom Studio voices (VoxCPM2 on 127.0.0.1:8189, for the Voices view and the voice MCP server)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/opt/voice
+# Only the RX 7900 XTX. The model loads when a reading needs it, only with 8 GB free on the card (otherwise the reading
+# waits), and unloads after 3 idle minutes, so ComfyUI and Strata get the card back.
+Environment=HIP_VISIBLE_DEVICES=0 HF_HUB_OFFLINE=1 VOICE_PORT=8189 VOICE_IDLE_S=180 VOICE_NEED_GB=8
+Environment=VOICE_OUT_ROOTS=%h/Projects
+Environment=MALLOC_MMAP_THRESHOLD_=65536 MALLOC_TRIM_THRESHOLD_=65536
+ExecStart=%h/.local/opt/voice/.venv/bin/python %h/Projects/Tools/StrataStudio/tools/voice_engine.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

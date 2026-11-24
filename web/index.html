@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
+<title>Eidoloom Studio</title>
+<meta name="color-scheme" content="dark">
+<meta name="studio-build" content="">
+<link rel="icon" type="image/png" href="assets/eidoloom-mark-original.png">
+<script>try { const t = localStorage.getItem('studio.theme'); if (t === 'light' || t === 'sepia') document.documentElement.dataset.theme = t; } catch { /* ignore */ }</script>
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@6.0.0/css/xterm.min.css">
+</head>
+<body>
+
+<!-- ============ Login / create password ============ -->
+<div id="login" class="hidden">
+  <form id="login-card" autocomplete="on">
+    <div class="login-brand brand-lockup"><img class="brand-mark" src="assets/eidoloom-mark-original.png" alt=""><span class="brand-name">Eidoloom <small>Studio</small></span></div>
+    <h1 id="login-title">Sign in</h1>
+    <p id="login-sub" class="muted">Sign in to continue.</p>
+    <label class="field" id="login-user-wrap">
+      <span>Username</span>
+      <input id="login-user" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="32">
+    </label>
+    <label class="field hidden" id="login-name-wrap">
+      <span>Your name (optional)</span>
+      <input id="login-name" type="text" autocomplete="name" maxlength="80">
+    </label>
+    <label class="field">
+      <span id="login-pw-label">Password</span>
+      <span class="pw-wrap"><input id="login-pw" type="password" autocomplete="current-password" required autofocus><button id="login-show" class="pw-show" type="button" aria-label="Show password" aria-pressed="false" title="Show password"><i data-ico="eye" data-size="16"></i></button></span>
+    </label>
+    <label class="field hidden" id="login-pw2-wrap">
+      <span>Confirm password</span>
+      <input id="login-pw2" type="password" autocomplete="new-password">
+    </label>
+    <label class="login-check" id="login-remember-wrap"><input id="login-remember" type="checkbox"> Remember me for 30 days</label>
+    <div id="login-error" class="form-error" role="alert"></div>
+    <button id="login-submit" class="btn primary block" type="submit">Sign in</button>
+    <button id="login-forgot" class="link-btn" type="button">Forgot password?</button>
+  </form>
+</div>
+
+<!-- ============ App ============ -->
+<div id="app" class="hidden">
+  <header id="topbar">
+    <div class="brand brand-lockup" aria-label="Eidoloom Studio"><img class="brand-mark" src="assets/eidoloom-mark-original.png" alt=""><span class="brand-name">Eidoloom <small>Studio</small></span></div>
+    <button id="ws-btn" class="ws-btn" title="Open folder…">
+      <span id="ws-place"><i data-ico="folder" data-size="14"></i></span>
+      <span id="ws-name">Open folder…</span>
+      <span id="ws-where" class="ws-where hidden"></span>
+      <i data-ico="chevron-down" data-size="12"></i>
+    </button>
+    <button id="ws-share" class="icon-btn sm hidden" title="Share this folder with other people" aria-label="Share this folder"><i data-ico="users" data-size="14"></i><span id="ws-share-n" class="ws-share-n hidden"></span></button>
+    <div class="spacer"></div>
+    <label class="model-pick" title="Model used by the agent">
+      <i data-ico="sparkles" data-size="14"></i>
+      <select id="model-select" aria-label="Model"></select>
+    </label>
+    <button id="tg-sandbox" class="toggle hidden" role="switch" aria-checked="false">
+      <span class="sw"></span><span class="lbl"><span class="long">Sandbox</span><span class="short">Sandbox</span></span>
+    </button>
+    <button id="btn-sandbox-cfg" class="icon-btn hidden" title="Sandbox settings for this folder"><i data-ico="gear" data-size="15"></i></button>
+    <button id="tg-apply" class="toggle" role="switch" aria-checked="false" title="Auto-apply edits: apply agent file edits without asking">
+      <span class="sw"></span><span class="lbl"><span class="long">Auto-apply edits</span><span class="short">Auto-apply</span></span>
+    </button>
+    <button id="tg-cmd" class="toggle warn" role="switch" aria-checked="false" title="Auto-run commands: run agent shell commands without asking">
+      <span class="sw"></span><span class="lbl"><span class="long">Auto-run commands</span><span class="short">Auto-run</span></span>
+    </button>
+    <button id="btn-room" class="icon-btn" title="Waiting room" aria-label="Waiting room" aria-pressed="false" aria-controls="room"><i data-ico="users" data-size="16"></i><span id="room-count" class="room-count hidden"></span><span id="room-unread" class="room-unread hidden"></span></button>
+    <button id="btn-dash" class="icon-btn" title="Model gauges" aria-label="Model gauges" aria-pressed="false" aria-controls="dash"><i data-ico="gauge" data-size="16"></i></button>
+    <button id="btn-cdash" class="icon-btn hidden" title="ComfyUI: pictures, video and music" aria-label="ComfyUI: pictures, video and music" aria-pressed="false" aria-controls="cdash"><i data-ico="create" data-size="16"></i></button>
+    <button id="btn-toggle-agent" class="icon-btn" title="Toggle agent panel"><i data-ico="panel-right" data-size="16"></i></button>
+    <button id="btn-theme" class="icon-btn" title="Theme" aria-label="Theme"><i data-ico="theme" data-size="16"></i></button>
+    <button id="btn-guide" class="icon-btn" title="Guide: how to use Studio" aria-label="Guide"><i data-ico="help" data-size="16"></i></button>
+    <button id="btn-about" class="icon-btn" title="About Eidoloom Studio" aria-label="About Eidoloom Studio"><i data-ico="info" data-size="16"></i></button>
+    <button id="btn-account" class="icon-btn" title="Your account" aria-label="Your account"><i data-ico="user" data-size="16"></i></button>
+    <button id="btn-logout" class="icon-btn" title="Log out"><i data-ico="logout" data-size="16"></i></button>
+    <button id="btn-more" class="icon-btn" title="More" aria-label="More" aria-expanded="false" aria-controls="top-sheet"><i data-ico="more" data-size="18"></i></button>
+    <div id="top-sheet" class="hidden"></div>
+  </header>
+
+  <nav id="mobile-tabs" aria-label="Sections">
+    <button data-tab="files" id="mt-files"><i data-ico="files" data-size="18"></i><span>Files</span></button>
+    <button data-tab="editor" id="mt-editor"><i data-ico="edit" data-size="18"></i><span>Editor</span></button>
+    <button data-tab="chat" id="mt-chat"><i data-ico="sparkles" data-size="18"></i><span>Chat</span><span class="mt-pct hidden"></span><span class="mt-dot"></span></button>
+    <button data-tab="terminal" id="mt-terminal"><i data-ico="terminal" data-size="18"></i><span>Terminal</span></button>
+  </nav>
+  <div id="main">
+    <nav id="activity" aria-label="Views">
+      <button class="act active" data-view="explorer" title="Explorer (Ctrl+Shift+E)"><i data-ico="files" data-size="24"></i></button>
+      <button class="act" data-view="search" title="Search (Ctrl+Shift+F)"><i data-ico="search" data-size="24"></i></button>
+      <button class="act" data-view="git" title="Source control" aria-label="Source control"><i data-ico="branch" data-size="24"></i></button>
+      <button class="act" data-view="skills" title="Skills" aria-label="Skills"><i data-ico="skill" data-size="24"></i></button>
+      <button class="act" data-view="video" title="Timeline: video timelines to edit and render" aria-label="Timeline"><i data-ico="film" data-size="24"></i></button>
+      <button class="act" data-view="media" title="Media: the project's sounds, music, pictures, videos and 3D models" aria-label="Media"><i data-ico="library" data-size="24"></i></button>
+      <button class="act" data-view="voices" title="Voices: read text aloud, make voices" aria-label="Voices"><i data-ico="mic" data-size="24"></i></button>
+      <button class="act" data-view="tasks" title="Tasks: scheduled runs and loops" aria-label="Tasks"><i data-ico="clock" data-size="24"></i><span id="tasks-badge" class="act-badge hidden"></span></button>
+    </nav>
+
+    <aside id="sidebar">
+      <section id="view-explorer" class="view">
+        <div class="view-head">
+          <span class="view-title">Explorer</span>
+          <div class="view-actions">
+            <button class="icon-btn sm" id="ex-find-btn" title="Find folders, files and text in this project (Ctrl+Alt+F)" aria-label="Find in this project"><i data-ico="search" data-size="15"></i></button>
+            <button class="icon-btn sm" id="ex-new-file" title="New file"><i data-ico="file-plus" data-size="15"></i></button>
+            <button class="icon-btn sm" id="ex-new-dir" title="New folder"><i data-ico="folder-plus" data-size="15"></i></button>
+            <button class="icon-btn sm" id="ex-upload" title="Upload files from this computer (or drop them here)" aria-label="Upload files"><i data-ico="upload" data-size="15"></i></button>
+            <button class="icon-btn sm" id="ex-download" title="Download the whole project to this computer (as a zip)" aria-label="Download to this computer"><i data-ico="download" data-size="15"></i></button>
+            <button class="icon-btn sm" id="ex-live" title="Live servers: pages of servers running in this folder" aria-label="Live servers"><i data-ico="globe" data-size="15"></i></button>
+            <button class="icon-btn sm" id="ex-refresh" title="Refresh"><i data-ico="refresh" data-size="15"></i></button>
+            <button class="icon-btn sm" id="ex-collapse" title="Collapse all"><i data-ico="collapse" data-size="15"></i></button>
+          </div>
+        </div>
+        <div id="ex-find" class="ex-find hidden" role="search">
+          <div class="search-input">
+            <input id="ex-find-q" type="text" placeholder="Find folders, files and text" spellcheck="false" autocomplete="off" aria-label="Find in this project">
+            <button id="ex-find-case" class="chip-toggle" title="Match case" aria-pressed="false">Aa</button>
+            <button id="ex-find-close" class="icon-btn sm" title="Close (Esc)" aria-label="Close the find bar"><i data-ico="x" data-size="14"></i></button>
+          </div>
+          <div id="ex-find-summary" class="search-summary muted"></div>
+        </div>
+        <div id="ex-found" class="search-results ex-found hidden" role="list"></div>
+        <div id="tree" class="tree" tabindex="0" role="tree"></div>
+        <div id="tree-empty" class="empty-state hidden">
+          <i data-ico="folder-open" data-size="34"></i>
+          <p>Open a folder to start</p>
+          <button class="btn primary" id="empty-open">Open folder</button>
+        </div>
+      </section>
+
+      <section id="view-search" class="view hidden">
+        <div class="view-head"><span class="view-title">Search</span></div>
+        <div class="search-box">
+          <div class="search-input">
+            <input id="search-q" type="text" placeholder="Search in files" spellcheck="false" autocomplete="off">
+            <button id="search-case" class="chip-toggle" title="Match case" aria-pressed="false">Aa</button>
+            <button id="search-regex" class="chip-toggle" title="Use regular expression" aria-pressed="false">.*</button>
+          </div>
+          <div id="search-summary" class="search-summary muted"></div>
+        </div>
+        <div id="search-results" class="search-results"></div>
+      </section>
+
+      <section id="view-git" class="view hidden">
+        <div class="view-head">
+          <span class="view-title">Source control</span>
+          <div class="view-actions"><button class="icon-btn sm" id="git-refresh" title="Refresh" aria-label="Refresh"><i data-ico="refresh" data-size="15"></i></button></div>
+        </div>
+        <div id="git-body" class="git-body"></div>
+      </section>
+      <section id="view-skills" class="view hidden">
+        <div class="view-head">
+          <span class="view-title">Skills</span>
+          <div class="view-actions"><button class="icon-btn sm" id="skills-new" title="New skill" aria-label="New skill"><i data-ico="plus" data-size="15"></i></button><button class="icon-btn sm" id="skills-refresh" title="Refresh" aria-label="Refresh"><i data-ico="refresh" data-size="15"></i></button></div>
+        </div>
+        <div id="skills-body" class="skills-body"></div>
+      </section>
+      <section id="view-tasks" class="view hidden">
+        <div class="view-head">
+          <span class="view-title">Tasks</span>
+          <div class="view-actions"><button class="icon-btn sm" id="task-new" title="New task" aria-label="New task"><i data-ico="plus" data-size="15"></i></button><button class="icon-btn sm" id="tasks-refresh" title="Refresh" aria-label="Refresh"><i data-ico="refresh" data-size="15"></i></button></div>
+        </div>
+        <div id="tasks-body" class="skills-body"></div>
+      </section>
+      <section id="view-video" class="view hidden">
+        <div class="view-head">
+          <span class="view-title">Timeline</span>
+          <div class="view-actions"><button class="icon-btn sm" id="video-new" title="New timeline" aria-label="New timeline"><i data-ico="plus" data-size="15"></i></button><button class="icon-btn sm" id="video-refresh" title="Refresh" aria-label="Refresh"><i data-ico="refresh" data-size="15"></i></button></div>
+        </div>
+        <div id="video-body" class="skills-body"></div>
+      </section>
+      <section id="view-media" class="view hidden">
+        <div class="view-head">
+          <span class="view-title">Media</span>
+          <div class="view-actions"><button class="icon-btn sm" id="media-refresh" title="Refresh" aria-label="Refresh"><i data-ico="refresh" data-size="15"></i></button></div>
+        </div>
+        <div id="media-body" class="skills-body"></div>
+      </section>
+      <section id="view-voices" class="view hidden">
+        <div class="view-head">
+          <span class="view-title">Voices</span>
+          <div class="view-actions"><button class="icon-btn sm" id="voice-new" title="New voice from a description" aria-label="New voice"><i data-ico="plus" data-size="15"></i></button><button class="icon-btn sm" id="voice-rec" title="New voice from a recording" aria-label="Voice from a recording"><i data-ico="mic" data-size="15"></i></button><button class="icon-btn sm" id="voices-refresh" title="Refresh" aria-label="Refresh"><i data-ico="refresh" data-size="15"></i></button></div>
+        </div>
+        <div id="voices-body" class="skills-body"></div>
+      </section>
+    </aside>
+    <div class="splitter v" id="split-left" title="Drag to resize"></div>
+
+    <div id="center">
+      <div id="editor-area">
+        <div id="tabbar">
+          <div id="tabs" role="tablist"></div>
+          <div class="tab-tools">
+            <button id="btn-preview" class="btn sm hidden" title="Show this file as a page"><i data-ico="eye" data-size="14"></i><span>Preview</span></button>
+            <button id="btn-wrap" class="icon-btn sm" title="Toggle word wrap (Alt+Z)"><i data-ico="wrap" data-size="15"></i></button>
+            <button id="btn-minimap" class="icon-btn sm" title="Hide the code map (Alt+M)" aria-pressed="true"><i data-ico="minimap" data-size="15"></i></button>
+          </div>
+        </div>
+        <div id="editor-stack">
+          <div id="pane-monaco" class="pane hidden"></div>
+          <div id="pane-diff" class="pane hidden">
+            <div id="diff-bar">
+              <i data-ico="diff" data-size="15"></i>
+              <span id="diff-title" class="diff-title"></span>
+              <span id="diff-counts" class="counts"></span>
+              <span class="spacer"></span>
+              <button class="btn sm danger" id="diff-reject">Reject</button>
+              <button class="btn sm primary" id="diff-accept">Accept</button>
+            </div>
+            <div id="diff-host"></div>
+          </div>
+          <textarea id="pane-plain" class="pane hidden" spellcheck="false" wrap="off"></textarea>
+          <div id="pane-msg" class="pane welcome"></div>
+          <div id="pane-preview" class="pane hidden"></div>
+        </div>
+      </div>
+      <div class="splitter h" id="split-bottom" title="Drag to resize"></div>
+      <div id="panel" class="hidden">
+        <div id="panel-head">
+          <div class="panel-title">Terminal</div>
+          <div id="term-tabs"></div>
+          <button class="icon-btn sm" id="term-new" title="New terminal"><i data-ico="plus" data-size="15"></i></button>
+          <div class="spacer"></div>
+          <button class="icon-btn sm toggle" id="term-wrap" title="Wrap long lines" aria-pressed="true"><i data-ico="wrap" data-size="15"></i></button>
+          <button class="icon-btn sm" id="term-hide" title="Hide panel (Ctrl+`)"><i data-ico="chevron-down" data-size="15"></i></button>
+        </div>
+        <div id="term-host"></div>
+      </div>
+    </div>
+
+    <div class="splitter v" id="split-right" title="Drag to resize"></div>
+    <aside id="agent">
+      <div id="agent-head">
+        <div class="sess-wrap">
+          <button id="sess-btn" class="sess-btn" title="Chat sessions"><i data-ico="sparkles" data-size="14"></i><span id="sess-title">New chat</span><i data-ico="chevron-down" data-size="12"></i></button>
+          <div id="sess-menu" class="menu hidden"></div>
+        </div>
+        <button id="chat-settings" class="icon-btn sm" title="Chat settings: reasoning effort, notifications, dictation" aria-label="Chat settings"><i data-ico="gear" data-size="14"></i></button>
+        <button id="chat-export" class="icon-btn sm" title="Export this chat as a report" aria-label="Export this chat as a report"><i data-ico="download" data-size="14"></i></button>
+        <button id="new-chat" class="btn sm ghost" title="Start a new chat"><i data-ico="plus" data-size="14"></i><span>New chat</span></button>
+      </div>
+      <button id="cx-strip" class="cx-strip hidden" type="button" aria-expanded="false" title="Codex usage: open for details"></button>
+      <div id="plan-dock" class="plan-dock hidden"></div>
+      <div id="msgs" class="msgs" aria-live="polite"></div>
+      <button id="to-bottom" class="to-bottom hidden" title="Scroll to latest"><i data-ico="arrow-down" data-size="14"></i></button>
+      <div id="composer">
+        <div id="room-banner" class="room-banner hidden" role="status"></div>
+        <div id="agent-status" class="agent-status hidden"></div>
+        <div class="ctx-row">
+          <span class="attach-split"><button id="attach-btn" class="ctx-chip" title="Add any files: pictures, Word, Excel, PowerPoint, PDF, text, sounds, videos… (you can also paste or drop them)"><i data-ico="paperclip" data-size="13"></i><span>Add files</span></button><button id="attach-more" class="ctx-chip attach-more" title="Add from this computer, from the project, or a recent sound, picture or video" aria-label="More ways to add files"><i data-ico="chevron-down" data-size="12"></i></button></span>
+          <input id="attach-input" type="file" multiple hidden>
+          <button id="plan-chip" class="ctx-chip plan-chip" aria-pressed="false" title="Plan first: the agent looks around and proposes a plan, changing nothing until you approve it"><i data-ico="list" data-size="13"></i><span>Plan first</span></button>
+          <button id="goal-chip" class="ctx-chip goal-chip" aria-pressed="false" aria-haspopup="dialog" title="Goal: the agent keeps working in rounds until what you describe is true"><i data-ico="flag" data-size="13"></i><span>Goal</span></button>
+          <button id="effort-chip" class="ctx-chip effort-chip hidden" aria-haspopup="menu" title="How hard Codex thinks in this chat"><i data-ico="gauge" data-size="13"></i><span>Effort</span></button>
+        </div>
+        <div id="goal-bar" class="goal-bar hidden" role="status" aria-label="The chat's goal"></div>
+        <div id="queue-row" class="queue-row hidden" aria-label="Queued messages"></div>
+        <div id="attach-row" class="attach-row hidden" aria-label="Attached files"></div>
+        <div class="input-wrap">
+          <textarea id="agent-input" rows="2" placeholder="Ask the agent to…  (Enter to send, Shift+Enter for newline)" spellcheck="true"></textarea>
+          <button id="mic-btn" class="send-btn mic hidden" title="Dictate (Ctrl+Shift+D)" aria-label="Dictate" aria-pressed="false"><i data-ico="mic" data-size="15"></i></button>
+          <button id="agent-send" class="send-btn" title="Send (Enter)"><i data-ico="arrow-up" data-size="16"></i></button>
+          <button id="agent-queue" class="send-btn queue hidden" title="Queue for when the agent finishes (Alt+Enter)" aria-label="Queue message"><i data-ico="list" data-size="14"></i></button>
+          <button id="agent-stop" class="send-btn stop hidden" title="Stop"><i data-ico="stop" data-size="14"></i></button>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <footer id="statusbar">
+    <button id="sb-term" class="sb-item" title="Toggle terminal (Ctrl+`)"><i data-ico="terminal" data-size="13"></i><span>Terminal</span></button>
+    <span id="sb-notice" class="sb-item notice hidden"></span>
+    <div class="spacer"></div>
+    <button id="sb-model" class="sb-item" title="Model activity" aria-expanded="false" aria-controls="dash"><span class="dash-dot"></span><span id="sb-model-text">Model</span></button>
+    <button id="sb-codex" class="sb-item hidden" title="Codex usage on your ChatGPT plan" aria-expanded="false" aria-controls="codex-usage"><span class="cx-mini" aria-hidden="true"><i></i><i></i></span><span id="sb-codex-text">Codex</span></button>
+    <button id="sb-comfy" class="sb-item hidden" title="ComfyUI: pictures, video and music" aria-expanded="false" aria-controls="cdash"><span class="dash-dot"></span><span id="sb-comfy-text">ComfyUI</span></button>
+    <span id="sb-pos" class="sb-item"></span>
+    <span id="sb-lang" class="sb-item"></span>
+    <button id="sb-wrap" class="sb-item" title="Toggle word wrap (Alt+Z)">Wrap: off</button>
+  </footer>
+</div>
+
+<section id="dash" class="dash hidden" aria-label="Model activity"></section>
+<section id="cdash" class="dash hidden" aria-label="ComfyUI: pictures, video and music"></section>
+<section id="room" class="dash room hidden" aria-label="Waiting room"></section>
+<div id="overlay-root"></div>
+<div id="toasts" aria-live="assertive"></div>
+<script src="app.js"></script>
+</body>
+</html>

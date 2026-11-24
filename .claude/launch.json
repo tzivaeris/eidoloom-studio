@@ -1,0 +1,24 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "strata-studio",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "studio.py",
+        "--host",
+        "127.0.0.1"
+      ],
+      "port": 8790
+    },
+    {
+      "name": "strata-studio-sandbox",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "sandbox/arena.py",
+        "serve"
+      ],
+      "port": 8791
+    }
+  ]
+}

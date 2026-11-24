@@ -1,0 +1,9 @@
+{
+ "mcpServers": {
+  "greek-check": {
+   "command": "python3",
+   "args": ["/path/to/eidoloom-studio/tools/languagetool_mcp.py"],
+   "env": {"LANGUAGETOOL_URL": "http://127.0.0.1:8010"}
+  }
+ }
+}

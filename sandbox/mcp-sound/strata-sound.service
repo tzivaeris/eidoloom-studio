@@ -1,0 +1,20 @@
+[Unit]
+Description=Eidoloom Studio sound effects (MOSS-SoundEffect v2.0 on 127.0.0.1:8190, for the sound MCP server)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/opt/sound
+# Only the RX 7900 XTX. The model loads when a sound needs it (11 GB free; an idle Strata is unloaded to make room) and
+# unloads after 3 idle minutes, or a few seconds after making room, so Strata and ComfyUI get the card back.
+Environment=HIP_VISIBLE_DEVICES=0 HF_HUB_OFFLINE=1 SOUND_PORT=8190 SOUND_IDLE_S=180 SOUND_NEED_GB=11 TORCHDYNAMO_DISABLE=1
+Environment=SOUND_OUT_ROOTS=%h/Projects SOUND_MODEL=%h/.local/opt/sound/models/MOSS-SoundEffect-v2.0
+Environment=MALLOC_MMAP_THRESHOLD_=65536 MALLOC_TRIM_THRESHOLD_=65536
+# A new process otherwise spends ~100 s searching for MIOpen kernels before its first sound (23 s with FAST).
+Environment=MIOPEN_FIND_MODE=FAST PYTORCH_HIP_ALLOC_CONF=expandable_segments:True PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+ExecStart=%h/.local/opt/sound/.venv/bin/python %h/Projects/Tools/StrataStudio/tools/sound_engine.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

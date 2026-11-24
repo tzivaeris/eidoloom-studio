@@ -1,0 +1,10 @@
+{
+ "mcpServers": {
+  "video": {
+   "command": "python3",
+   "args": ["/path/to/eidoloom-studio/tools/video_mcp.py"],
+   "env": {"VIDEO_ROOTS": "/home/you/Projects:/home/you/.local/opt/comfyui/output:/home/you/Videos"},
+   "timeout_s": 1800
+  }
+ }
+}

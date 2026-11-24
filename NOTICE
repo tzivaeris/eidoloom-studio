@@ -1,0 +1,19 @@
+Eidoloom Studio
+Copyright (C) 2026 John Chatzopoulos
+
+This program is free software: you can redistribute it and/or modify it under the terms of the
+GNU Affero General Public License as published by the Free Software Foundation, version 3 of the
+License (see LICENSE). It is distributed WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+If you run a modified version of Eidoloom Studio for other people over a network, the AGPL asks you
+to offer them the source of your version (section 13).
+
+A commercial licence without the AGPL's conditions is available from the copyright holder.
+
+Third-party parts, not covered by this notice and not stored in this repository:
+- Loaded by the browser from cdn.jsdelivr.net: Monaco Editor (MIT), xterm.js (MIT), pdf.js
+  (Apache-2.0), three.js (MIT), KaTeX (MIT).
+- Downloaded by the optional tools, each under its own licence: the Greek lexicon built from
+  kaikki.org's Wiktionary data (CC BY-SA 4.0), and the models and programs that installer.py fetches
+  (their licences are named in sandbox/*/README.md).

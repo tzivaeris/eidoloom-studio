@@ -1,0 +1,18 @@
+{
+ "mcpServers": {
+  "comfyui": {
+   "command": "python3",
+   "args": [
+    "/path/to/eidoloom-studio/tools/comfyui_mcp.py"
+   ],
+   "env": {
+    "COMFYUI_URL": "http://127.0.0.1:8188",
+    "COMFYUI_SETTINGS": "/path/to/eidoloom-studio/data/comfyui.json",
+    "COMFYUI_SWAP_FILE": "/home/you/.local/opt/comfyui/user/strata_swap.json",
+    "COMFYUI_WAIT_S": "1700",
+    "COMFYUI_SWAP_WAIT_S": "1500"
+   },
+   "timeout_s": 1800
+  }
+ }
+}

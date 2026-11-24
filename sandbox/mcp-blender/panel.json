@@ -1,0 +1,9 @@
+{
+ "mcpServers": {
+  "blender": {
+   "command": "/home/you/.local/opt/mcp-for-blender/bin/mcp-for-blender",
+   "args": [],
+   "env": {"BLENDER_HOST": "localhost", "BLENDER_PORT": "9876", "BLENDER_MCP_SAFE_MODE": "1", "DISABLE_TELEMETRY": "true"}
+  }
+ }
+}

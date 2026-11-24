@@ -1,0 +1,10 @@
+{
+  "host": "127.0.0.1",
+  "port": 8790,
+  "gateway": "http://127.0.0.1:11434",
+  "workspace_roots": ["~/Projects"],
+  "default_model": "",
+  "max_turns": 200,
+  "command_timeout_s": 120,
+  "public_url": ""
+}

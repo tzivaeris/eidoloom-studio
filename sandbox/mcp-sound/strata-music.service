@@ -1,0 +1,20 @@
+[Unit]
+Description=Eidoloom Studio music engine (HeartMuLa-oss-3B on 127.0.0.1:8191, for generate_music in the comfyui MCP server)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/opt/music
+# Only the RX 7900 XTX. HeartMuLa loads when a song needs it (16 GB free; an idle Strata is unloaded to make room), then
+# HeartCodec in its place, and the process ends after 3 idle minutes, or a few seconds after making room.
+Environment=HIP_VISIBLE_DEVICES=0 HF_HUB_OFFLINE=1 MUSIC_PORT=8191 MUSIC_IDLE_S=180 MUSIC_NEED_GB=16 TORCHDYNAMO_DISABLE=1
+Environment=MUSIC_OUT_ROOTS=%h/Projects:%h/.local/opt/comfyui/output MUSIC_CKPT=%h/.local/opt/music/ckpt
+Environment=MALLOC_MMAP_THRESHOLD_=65536 MALLOC_TRIM_THRESHOLD_=65536
+# No expandable_segments here: with it (ROCm 7.2, PyTorch 2.14) HeartMuLa wrote noise instead of music (2026-11-16).
+Environment=MIOPEN_FIND_MODE=FAST
+ExecStart=%h/.local/opt/music/.venv/bin/python %h/Projects/Tools/StrataStudio/tools/music_engine.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Eidoloom Studio helper</title>
+<link rel="icon" href="/icon.png">
+<style>
+:root { --bg: #f4f5f7; --card: #fff; --fg: #1f2328; --dim: #5d6670; --line: #d8dde3; --accent: #0b6bcb; --accent-fg: #fff; --ok: #1f8f4e; --warn: #b7791f; --err: #c0392b; --field: #fff; }
+@media (prefers-color-scheme: dark) { :root { --bg: #16181c; --card: #1f2227; --fg: #e6e8eb; --dim: #9aa3ad; --line: #343941; --accent: #3794ff; --accent-fg: #fff; --ok: #3fbf6f; --warn: #e0a83a; --err: #ef6b5b; --field: #16181c; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+header { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+header img { width: 40px; height: 40px; }
+header h1 { margin: 0; font-size: 20px; }
+header small { color: var(--dim); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-bottom: 16px; }
+.card h2 { margin: 0 0 12px; font-size: 15px; }
+.folder { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 12px; align-items: start; padding: 12px 0; border-top: 1px solid var(--line); }
+.folder:first-of-type { border-top: 0; padding-top: 0; }
+.dot { width: 11px; height: 11px; border-radius: 50%; margin-top: 5px; background: var(--dim); }
+.dot.connected { background: var(--ok); } .dot.connecting { background: var(--warn); } .dot.stopped { background: var(--err); }
+.folder b { font-size: 14.5px; } .folder .path { color: var(--dim); font-size: 12.5px; word-break: break-all; }
+.folder .state { font-size: 12.5px; } .folder .state.bad { color: var(--err); }
+.folder .acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.empty { color: var(--dim); }
+label { display: block; font-weight: 600; margin: 12px 0 4px; }
+label small { font-weight: 400; color: var(--dim); }
+input[type=text] { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--field); color: var(--fg); font: inherit; }
+input[type=text]:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+#code { font: 600 18px/1.3 ui-monospace, Consolas, monospace; letter-spacing: 3px; text-transform: uppercase; max-width: 220px; }
+.row { display: flex; gap: 8px; } .row input { flex: 1; min-width: 0; }
+button { padding: 7px 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--fg); font: inherit; cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
+button.danger:hover { border-color: var(--err); color: var(--err); }
+button:disabled { opacity: .6; cursor: default; }
+.foot { display: flex; gap: 8px; align-items: center; margin-top: 16px; }
+.msg { margin-top: 12px; padding: 8px 12px; border-radius: 6px; }
+.msg.err { background: color-mix(in srgb, var(--err) 14%, transparent); color: var(--err); }
+.msg.ok { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
+.trust { margin-top: 12px; padding: 12px; border: 1px solid var(--warn); border-radius: 8px; }
+.trust code { display: block; margin: 8px 0; font-size: 13px; word-break: break-all; }
+.hint { color: var(--dim); font-size: 12.5px; margin: 0; }
+.switch { display: flex; align-items: center; gap: 10px; font-weight: 400; margin: 0; cursor: pointer; }
+.switch input { width: 18px; height: 18px; }
+details summary { cursor: pointer; color: var(--dim); }
+pre { max-height: 260px; overflow: auto; margin: 8px 0 0; padding: 8px; background: var(--field); border: 1px solid var(--line); border-radius: 6px; font-size: 12px; white-space: pre-wrap; }
+.settings { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<main>
+<header><img src="/icon.png" alt=""><div><h1>Eidoloom Studio helper</h1><small id="summary">Starting…</small></div></header>
+
+<section class="card"><h2>Your folders</h2><div id="folders"><p class="empty">No folder is shared yet. Connect one below.</p></div></section>
+
+<section class="card" id="connect">
+  <h2>Connect a folder</h2>
+  <p class="hint">In Studio choose <b>Open folder → Connect a folder on my computer</b>. It shows a pairing code; enter it here within 10 minutes.</p>
+  <form id="pair-form" autocomplete="off">
+    <label for="server">Studio's address</label>
+    <input type="text" id="server" required placeholder="https://studio.local">
+    <label for="code">Pairing code</label>
+    <input type="text" id="code" required placeholder="ABCD-EFGH" maxlength="9" spellcheck="false">
+    <label for="folder">Folder to share <small>— a project folder, not your whole home folder</small></label>
+    <div class="row"><input type="text" id="folder" required spellcheck="false"><button type="button" id="browse">Browse…</button></div>
+    <div id="trust" class="trust" hidden>
+      <b>This computer does not know Studio's certificate.</b>
+      <p class="hint">Studio's own network often uses its own certificate. Trust it only if this is the address of your own Studio, on your own network. Its fingerprint:</p>
+      <code id="fingerprint"></code>
+      <button type="button" class="primary" id="trust-yes">Trust and connect</button> <button type="button" id="trust-no">Cancel</button>
+    </div>
+    <div id="pair-msg" class="msg" hidden></div>
+    <div class="foot"><button class="primary" id="pair-btn" type="submit">Connect</button></div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Settings</h2>
+  <div class="settings">
+    <label class="switch"><input type="checkbox" id="autostart"> Start the helper when I sign in to this computer</label>
+    <button class="danger" id="quit" type="button">Quit the helper</button>
+  </div>
+  <p class="hint" style="margin-top:10px">The helper runs without a window; its icon is in the tray, by the clock. Closing this page does not stop it. Quitting stops sharing every folder until you start it again.</p>
+</section>
+
+<section class="card"><details><summary>Activity</summary><pre id="log"></pre></details></section>
+</main>
+<script>
+const params = new URLSearchParams(location.search);
+const token = params.get('t') || sessionStorage.getItem('helper-token') || '';
+sessionStorage.setItem('helper-token', token);
+history.replaceState(null, '', '/' + location.hash);
+const $ = id => document.getElementById(id);
+async function api(path, body) {
+  const r = await fetch(path, { method: body ? 'POST' : 'GET', headers: { 'X-Token': token, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || ('error ' + r.status));
+  return data;
+}
+const STATE = { connected: 'Connected', connecting: 'Connecting…', offline: 'Offline', stopped: 'Stopped' };
+function el(tag, attrs = {}, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) { if (k === 'text') n.textContent = v; else if (k.startsWith('on')) n.addEventListener(k.slice(2), v); else n.setAttribute(k, v); }
+  for (const k of kids.flat()) if (k != null) n.append(k);
+  return n;
+}
+let filled = false, lastFolders = '';
+function render(s) {
+  const on = s.folders.filter(f => f.state === 'connected').length;
+  $('summary').textContent = s.folders.length ? `${on} of ${s.folders.length} folder${s.folders.length > 1 ? 's' : ''} connected · helper ${s.version}` : `No folder shared yet · helper ${s.version}`;
+  const key = JSON.stringify(s.folders);
+  if (key !== lastFolders) {
+    lastFolders = key;
+    $('folders').replaceChildren(...(s.folders.length ? s.folders.map(f => el('div', { class: 'folder' },
+      el('span', { class: 'dot ' + f.state, title: STATE[f.state] || f.state }),
+      el('div', {}, el('b', { text: f.name }), el('div', { class: 'path', text: `${f.folder}  →  ${f.server}` }),
+        el('div', { class: 'state' + (f.state === 'stopped' || f.state === 'offline' ? ' bad' : ''), text: [STATE[f.state] || f.state, f.state === 'connected' && f.files ? `${f.files} file${f.files === 1 ? '' : 's'} in sync` : '', f.last_sync ? `checked ${f.last_sync}` : '', f.detail].filter(Boolean).join(' · ') }),
+        f.skipped && f.skipped.length ? el('details', {}, el('summary', { text: `${f.skipped.length} large file(s) stay here` }), el('div', { class: 'path', text: f.skipped.join(', ') })) : null),
+      el('div', { class: 'acts' },
+        el('button', { type: 'button', onclick: () => api('/api/open', { id: f.id }).catch(e => alert(e.message)) }, 'Open folder'),
+        f.state !== 'connected' ? el('button', { type: 'button', onclick: () => api('/api/reconnect', { id: f.id }).then(refresh) }, 'Try again') : null,
+        el('button', { type: 'button', class: 'danger', onclick: () => { if (confirm(`Stop sharing ${f.folder}?\n\nThe folder on this computer stays as it is. Studio is told, and keeps its copy as an ordinary folder.`)) api('/api/remove', { id: f.id }).then(r => { if (r && r.studio_told === false) alert('Studio could not be reached, so it still lists this folder. Disconnect it there too (Open folder → My computers).'); refresh(); }); } }, 'Disconnect'))
+    )) : [el('p', { class: 'empty', text: 'No folder is shared yet. Connect one below.' })]));
+  }
+  if (!filled) {
+    filled = true;
+    $('server').value = s.last_server || 'https://studio.local';
+    $('browse').hidden = !s.can_browse;
+    if (location.hash === '#connect' || !s.folders.length) { $('connect').scrollIntoView(); $('code').focus(); }
+  }
+  $('autostart').checked = s.autostart;
+  const log = $('log'), atEnd = log.scrollHeight - log.scrollTop - log.clientHeight < 20;
+  log.textContent = s.log.join('\n');
+  if (atEnd) log.scrollTop = log.scrollHeight;
+}
+async function refresh() { try { render(await api('/api/state')); } catch (e) { $('summary').textContent = 'The helper is not running: start it again to use this page.'; } }
+function message(text, kind) { const m = $('pair-msg'); m.hidden = !text; m.className = 'msg ' + (kind || 'err'); m.textContent = text ? text[0].toUpperCase() + text.slice(1) : ''; }
+$('code').addEventListener('input', e => { const v = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8); e.target.value = v.length > 4 ? v.slice(0, 4) + '-' + v.slice(4) : v; });
+$('browse').onclick = async () => {
+  $('browse').disabled = true;
+  try { $('folder').value = (await api('/api/browse', {})).path; message(''); } catch (e) { if (e.message !== 'no folder chosen') message(e.message); }
+  finally { $('browse').disabled = false; }
+};
+let pending = null;
+async function pair(trust) {
+  message(''); $('pair-btn').disabled = true; $('pair-btn').textContent = 'Connecting…';
+  try {
+    const r = await api('/api/pair', { server: $('server').value, code: $('code').value, folder: $('folder').value, trust: trust || '' });
+    if (r.need_trust) { pending = r.pin; $('fingerprint').textContent = r.fingerprint; $('trust').hidden = false; $('trust-yes').focus(); return; }
+    $('trust').hidden = true; $('code').value = ''; $('folder').value = '';
+    message(`Connected: it is "${r.name}" in Studio. You can open it there now, from Open folder → My computers.`, 'ok');
+    refresh();
+  } catch (e) { message(e.message); }
+  finally { $('pair-btn').disabled = false; $('pair-btn').textContent = 'Connect'; }
+}
+$('pair-form').onsubmit = e => { e.preventDefault(); pair(''); };
+$('trust-yes').onclick = () => pair(pending);
+$('trust-no').onclick = () => { $('trust').hidden = true; pending = null; message('Not connected: the certificate was not trusted.'); };
+$('autostart').onchange = e => api('/api/autostart', { on: e.target.checked }).catch(err => { alert(err.message); refresh(); });
+$('quit').onclick = () => { if (confirm('Quit the helper? Every folder stops being shared until you start it again.')) api('/api/quit', {}).then(() => { $('summary').textContent = 'The helper has quit. Start it again to share your folders.'; }); };
+refresh(); setInterval(refresh, 2000);
+</script>
+</body>
+</html>

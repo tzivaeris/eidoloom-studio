@@ -1,0 +1,24 @@
+[Unit]
+Description=ComfyUI (image generation for Eidoloom Studio, 127.0.0.1:8188)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/opt/comfyui
+# Only the RX 7900 XTX; ROCm does not support the RX 550. The Manager's fixed 9 GB Subagent pool keeps room beside Strata.
+# --reserve-vram counts from what is free at the time, so a large value left ComfyUI nothing while Strata was loaded
+# (every model streamed from RAM); 1 GB keeps a little spare, and Studio's MCP server unloads ComfyUI after each picture.
+Environment=HIP_VISIBLE_DEVICES=0
+# Freed model weights go back to the system: without these, glibc kept about 10.5 GB of RAM after each picture,
+# next to a Strata engine that needs most of the machine's 62 GB. Studio's MCP server asks ComfyUI to unload after each one.
+Environment=MALLOC_MMAP_THRESHOLD_=65536 MALLOC_TRIM_THRESHOLD_=65536
+# custom_nodes/strata_vram_cap.py keeps ComfyUI within this many GB of the card, whether or not Strata is loaded.
+Environment=STRATA_COMFY_VRAM_GB=8.5
+# Swap mode: while the comfyui tool has unloaded Strata, this file lets ComfyUI use the whole card (see the add-on).
+Environment=STRATA_COMFY_SWAP_FILE=%h/.local/opt/comfyui/user/strata_swap.json
+ExecStart=%h/.local/opt/comfyui/.venv/bin/python main.py --listen 127.0.0.1 --port 8188 --reserve-vram 1 --disable-auto-launch
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

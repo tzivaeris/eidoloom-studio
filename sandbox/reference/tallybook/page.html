@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Tallybook</title>
+<style>body{font:15px system-ui;margin:24px}form{margin:0 0 12px}#error{color:#b00020}</style>
+<h1>Tallybook</h1>
+<p id="error" role="alert"></p>
+<form id="client-form"><input name="name" placeholder="Client" required> <input name="rate_cents" type="number" placeholder="Rate (cents)" required> <button>Add client</button></form>
+<form id="entry-form"><input name="client_id" type="number" placeholder="Client id" required> <input name="start" placeholder="Start" required> <input name="end" placeholder="End" required> <input name="note" placeholder="Note"> <button>Add entry</button></form>
+<form id="invoice-form"><input name="client_id" type="number" placeholder="Client id" required> <input name="from" placeholder="From" required> <input name="to" placeholder="To" required> <button>Create invoice</button></form>
+<h2>Clients</h2><ul id="clients"></ul>
+<h2>Entries</h2><ul id="entries"></ul>
+<h2>Invoices</h2><ul id="invoices"></ul>
+<script>
+const ints = new Set(["client_id", "rate_cents"]);
+function fill(id, items, label) {
+  const list = document.getElementById(id);
+  list.replaceChildren(...items.map(item => {
+    const li = document.createElement("li");
+    li.textContent = label(item);
+    return li;
+  }));
+}
+async function refresh() {
+  fill("clients", await (await fetch("/api/clients")).json(), c => `#${c.id} ${c.name} (${c.rate_cents}c/h)`);
+  fill("entries", await (await fetch("/api/entries")).json(), e => `#${e.id} client ${e.client_id}: ${e.start} to ${e.end}, ${e.minutes} min ${e.note}`);
+}
+const invoices = [];
+function bind(id, path, done) {
+  document.getElementById(id).addEventListener("submit", async event => {
+    event.preventDefault();
+    const body = {};
+    for (const [key, value] of new FormData(event.target)) body[key] = ints.has(key) ? Number(value) : value;
+    const res = await fetch(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+    const data = await res.json();
+    document.getElementById("error").textContent = res.ok ? "" : data.error;
+    if (res.ok) { if (done) done(data); event.target.reset(); refresh(); }
+  });
+}
+bind("client-form", "/api/clients");
+bind("entry-form", "/api/entries");
+bind("invoice-form", "/api/invoices", doc => {
+  invoices.push(doc);
+  fill("invoices", invoices, i => `${i.number}: ${i.total_cents}c`);
+});
+refresh();
+</script>

@@ -1,0 +1,13 @@
+{
+ "mcpServers": {
+  "web-search": {
+   "command": "npx",
+   "args": ["-y", "mcp-searxng"],
+   "env": {"SEARXNG_URL": "http://127.0.0.1:8888"}
+  },
+  "fetch": {
+   "command": "docker",
+   "args": ["run", "-i", "--rm", "mcp/fetch"]
+  }
+ }
+}
