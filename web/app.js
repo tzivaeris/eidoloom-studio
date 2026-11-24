@@ -1270,6 +1270,7 @@ $('#effort-chip').onclick = e => {
   const items = offer.list.map(x => ({ label: (A.effort === x.value ? '✓ ' : '') + (EFFORT_NAMES[x.value] || x.value) + (x.value === offer.def ? ' (default)' : ''), title: x.description, run: () => pick(x.value) }));
   showContextMenu(r.left, r.top - 8 - 32 * (items.length + 2), [...items, '-', { label: (!A.effort ? '✓ ' : '') + 'The model\'s default', run: () => pick('') }]);
 };
+/* ------------------------------------------------------------------ Codex usage; the Codex, Greek and Models panes of Account & settings */
 /* Codex usage (admins with Codex on): the ChatGPT plan's short window (5 hours) and the week, as bars in a status-bar
    pill and a panel above it, from GET /api/codex/usage (Codex's account/rateLimits/read) and live codex_usage events. */
 const CX = { data: null, timer: null };
@@ -4037,6 +4038,7 @@ function aeAskAgent(t) {
   inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length);
 }
 
+/* ------------------------------------------------------------------ other editors: Markdown, the video player, 3D models, CSV tables, video timelines */
 /* Markdown files: shown as a document (the chat's renderer), Code switches to the editor */
 const mdSlug = text => text.toLowerCase().trim().replace(/[^\p{L}\p{N}\s-]/gu, '').replace(/\s+/g, '-');
 function mdJoin(dir, rel) {
@@ -4767,6 +4769,7 @@ function tlAgentActivity(kind) {
   V.agent = kind;
   for (const t of S.tabs) if (t.tl) { tlAgentBanner(t); if (!kind && S.active === t) { t.tl.vmtime = -1; tlLoad(t, true); } }
 }
+/* ------------------------------------------------------------------ sidebar views: Timeline, Media, Voices, Tasks */
 /* ---- the Timeline view: the project's video timelines, and a new one */
 async function videoRefresh() {
   const body = $('#video-body');
@@ -5222,6 +5225,7 @@ function taskEnded(d) {
   toast(needs ? `Task "${d.title}" needs your attention` : `Task "${d.title}" finished`, needs ? 'warn' : 'success', 6000);
   if (document.hidden && 'Notification' in window && Notification.permission === 'granted') new Notification('Eidoloom Studio', { body: `Task "${d.title}" ${needs ? 'needs your attention' : 'finished'}` });
 }
+/* ------------------------------------------------------------------ editor tabs: previews, diffs, live servers, the agent's browser, pictures, the tab bar */
 function updatePreviewButton(t) {
   const b = $('#btn-preview'), usable = t && t.kind === 'file' && canPreview(t.path) && !previewOnly(t);
   b.classList.toggle('hidden', !usable);
@@ -9138,7 +9142,7 @@ new ResizeObserver(() => { if (D.open && D.built) dashPosition(); roomPosition()
 addEventListener('resize', () => { if (D.open && D.built) dashPosition(); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) dashPoll(); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden && !buildNotice) GET('/api/auth/state', null, { noAuthRedirect: true }).catch(() => {}); });   // a phone tab coming back
-/* ---- phones and tablets */
+/* ------------------------------------------------------------------ phones and tablets */
 const LAYOUT = { phone: matchMedia('(max-width: 760px)'), tablet: matchMedia('(max-width: 1100px)'), compact: matchMedia('(max-width: 1000px)'), moved: [] };
 const isPhone = () => LAYOUT.phone.matches;
 // Controls that do not fit in a narrow top bar move into the "More" sheet, keeping their handlers.

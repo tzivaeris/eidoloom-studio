@@ -2545,6 +2545,10 @@ def api_workspace_sandbox(req):
     return {"workspace": APP.public_ws(ws)}
 
 
+# ---------------------------------------------------------------------------
+# Model state: the loading bar, Strata's own server (strata_dir), the dashboard's figures
+# ---------------------------------------------------------------------------
+
 # Lines the Strata engine writes while it loads, in order, with how far along each one is.
 LOAD_STEPS = [("memory guard", 3, "Checking memory"), ("of weights loaded", 8, "Reading weights"), ("native projection matrices", 11, "Reading weights"),
               ("PLE on", 14, "Opening the lookup table"), ("draft layer loaded", 17, "Loading the draft head"), ("hipBLASLt tuning", 19, "Warming up the GPU"),
@@ -3765,6 +3769,10 @@ def video_list(req):
     timelines.sort(key=lambda t: -t["mtime"])
     return {"timelines": timelines, "media": media, "folder": root}
 
+
+# ---------------------------------------------------------------------------
+# Media view and 3D models (a .blend is exported by Blender)
+# ---------------------------------------------------------------------------
 
 MEDIA_LENGTHS = {}             # (full path, mtime, size) -> seconds, from ffprobe; kept while Studio runs
 MEDIA_MAX = 1000
@@ -5436,6 +5444,10 @@ def agent_session_delete(req):
     return {"ok": True}
 
 
+# ---------------------------------------------------------------------------
+# Attachments and Office documents: reading .docx .xlsx .pptx and OpenDocument, writing .docx and .xlsx
+# ---------------------------------------------------------------------------
+
 # Pictures and text files the user adds to a message. Pictures are kept beside the chat, not inside it, and go to
 # the model as image parts; text files go in as text, like @file.
 MAX_ATTACHMENTS = 8
@@ -6396,6 +6408,10 @@ def agent_attachment(req):
     req.end_headers()
     req.wfile.write(data)
 
+
+# ---------------------------------------------------------------------------
+# Agent: undo, rewind and branch
+# ---------------------------------------------------------------------------
 
 def restore_checkpoint(ws, cid):
     """Puts the files of an undo point back as they were. Returns their paths, or None for an unknown (or used) point."""
@@ -8693,6 +8709,10 @@ def comfy_progress(tool, progress, stop):
             progress({"message": f"{label} · preparing"})
 
 
+# ---------------------------------------------------------------------------
+# The agent's web browser, shown live in the Browser tab
+# ---------------------------------------------------------------------------
+
 class BrowserView:
     """Studio's Browser tab: tools/browser_view.mjs watches the agent's Chromium (session.json from tools/browser_mcp.py),
     streams its screen as JPEG frames and passes the user's input on. While the user holds the browser ("Take over"),
@@ -9427,6 +9447,10 @@ def engine_context_tokens():
     return (status.get("last_generation") or {}).get("context_tokens") or None
 
 
+# ---------------------------------------------------------------------------
+# Session cache: a chat's engine state, saved with Strata's session files
+# ---------------------------------------------------------------------------
+
 # ---- the session cache (2026-11-12): a reloaded Strata engine re-read a 120K-token chat for about two minutes. Strata
 # saves the conversation it holds to a file and restores it in about a second (POST /slots/0?action=save|restore, on
 # when the profile has "slot_save_path"). Studio saves the chat when a run ends and before a picture or voice tool may
@@ -9737,6 +9761,10 @@ def recover_bare_tool_calls(content, extra=()):
         rest = rest[end:]
     return calls, content[:start.start()].rstrip()
 
+
+# ---------------------------------------------------------------------------
+# Reply checks: mixed scripts, cut-off or garbled replies, announcements, the turn guard
+# ---------------------------------------------------------------------------
 
 GARBLED_CALL_RE = re.compile(r'<tool_call>\s*(?:<function=|\{\s*"name")')
 LOOP_NOTES = ("You repeated", "Studio note:")
@@ -10154,6 +10182,10 @@ def agent_loop(run):
             return "finished", summary
     return "max_turns", None
 
+
+# ---------------------------------------------------------------------------
+# /compact and goals
+# ---------------------------------------------------------------------------
 
 COMPACT_REQUEST = ("Studio note: the conversation is getting too long for your memory, so the earlier part will be replaced by a "
                    "summary you write now. Write it for yourself, to carry on the work from it alone. Include: what the user asked for "
@@ -10980,6 +11012,10 @@ def timeskip_recover():
             job["state"] = "interrupted"
             write_json_atomic(os.path.join(folder, jid, "job.json"), job)
 
+
+# ---------------------------------------------------------------------------
+# After a run: test checks and the files card; agent_main starts a run
+# ---------------------------------------------------------------------------
 
 def detect_test_command(root):
     """The project's test command: a `Test command: ...` line in STUDIO.md, or the usual file for each language."""
@@ -12459,6 +12495,10 @@ def agent_stop(req):
     return {"ok": True}
 
 
+# ---------------------------------------------------------------------------
+# Passing a chat to another person (a copy of the chat and its folder)
+# ---------------------------------------------------------------------------
+
 HANDOFF_KEEP_S = 7 * 86400      # an offer nobody answers goes away after a week
 HANDOFF_DONE_S = 86400          # answered ones stay a day, so the sender sees the answer
 
@@ -12618,6 +12658,10 @@ def handoff_accept(req):
     return {"ok": True, "ws": APP.public_ws(APP.workspaces[ws["id"]]), "session": sid}
 
 
+# ---------------------------------------------------------------------------
+# Waiting room endpoints
+# ---------------------------------------------------------------------------
+
 @route("GET", "/api/queue/state")
 def queue_state(req):
     APP.room.mark_seen(req.current_user["username"])
@@ -12754,10 +12798,6 @@ def agent_settings(req):
 
 
 # ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
 # Commands typed in the chat box
 # ---------------------------------------------------------------------------
 
@@ -12791,6 +12831,10 @@ def mentioned_files_text(ws, mentions, admin=False):
         parts.append(f"--- {rel}\n{clipped}" + ("\n[the rest of this file was cut]" if len(clipped) < len(text) else ""))
     return "Files I attached:\n" + "\n".join(parts) + "\n" if parts else ""
 
+
+# ---------------------------------------------------------------------------
+# Voices: reading aloud, designed voices, voices from recordings (tools/voice_engine.py)
+# ---------------------------------------------------------------------------
 
 # ---- Voices: a shared cast read by VoxCPM2 through tools/voice_engine.py (config voice_url). A voice is the
 # description it was made from plus the take someone kept (its reference recording), so it sounds the same every time.
@@ -13078,6 +13122,10 @@ def voices_to_project(req):
     sync_publish(req.current_user["username"], req.sync_origin(), "files", ws=ws["id"])
     return {"path": rel_posix(path, ws["path"]), "trashed": trashed}
 
+
+# ---------------------------------------------------------------------------
+# A person's own computer (studio-helper): pairing, the folder's copy, commands and terminals
+# ---------------------------------------------------------------------------
 
 # ---- folders on a person's own computer: `studio-helper` (tools/helper) connects out to Studio, keeps a copy of the
 # folder in sync with one here (the mirror), and runs commands and terminals there. Studio's file tools, search, undo and
@@ -13699,6 +13747,10 @@ def helper_term(req):
     return {"ok": True}
 
 
+# ---------------------------------------------------------------------------
+# !command from the chat box, and the project's test command
+# ---------------------------------------------------------------------------
+
 @route("POST", "/api/command/run")
 def command_run(req):
     """A command the user typed with !. It runs where their terminals run: in the folder's sandbox, or on the host."""
@@ -14078,6 +14130,10 @@ def list_backups(data_dir):
     return found
 
 
+# ---------------------------------------------------------------------------
+# Graphics card, and the cleanup after the last run
+# ---------------------------------------------------------------------------
+
 # ---- the graphics card: how Strata and the tools (pictures, voices) share it (2026-11-11)
 # "tools": the Manager's Subagent pool keeps 9 GB free beside Strata, so pictures and voices start at once while Strata
 # runs with less of the card. "strata": no pool, Strata gets the whole card, and a picture or reading first unloads an
@@ -14289,6 +14345,10 @@ def card_strata_idle(req):
     return card_state()
 
 
+# ---------------------------------------------------------------------------
+# Greek check: the glossary, the grammar rules and LanguageTool
+# ---------------------------------------------------------------------------
+
 # --- Greek glossary --------------------------------------------------------------------------------------------------
 # The house glossary for Check Greek (tools/languagetool_mcp.py and tools/greek_grammar.py): terms to avoid with what
 # to use and why, and words that are right (names, terms) so the speller leaves them. One for the whole Studio, read by
@@ -14395,6 +14455,10 @@ def greek_check(req):
     return {"result": result, "failed": failed}
 
 
+# ---------------------------------------------------------------------------
+# Graphics card endpoints
+# ---------------------------------------------------------------------------
+
 def card_state():
     saved = read_json(card_path(), {})
     pool = card_pool()
@@ -14480,6 +14544,10 @@ def card_restart(req):
         raise ApiError(502, f"the Ollama Manager refused the change: {exc}") from None
     return card_state()
 
+
+# ---------------------------------------------------------------------------
+# Updates and Tools & setup (updates.py, installer.py)
+# ---------------------------------------------------------------------------
 
 # ---- Updates for third-party tools (updates.py): Studio gives it what is busy and how to restart a tool server.
 def updates_busy():
@@ -14651,6 +14719,10 @@ def updates_settings(req):
     return up.public()
 
 
+# ---------------------------------------------------------------------------
+# Backup endpoints
+# ---------------------------------------------------------------------------
+
 def backup_loop():
     """Back up when the newest backup is older than the interval."""
     while True:
@@ -14677,6 +14749,10 @@ def admin_backup_now(req):
     except (OSError, tarfile.TarError) as exc:
         raise ApiError(500, f"backup failed: {exc}")
 
+
+# ---------------------------------------------------------------------------
+# Command line (--backup, --restore, --set-password) and the entry point
+# ---------------------------------------------------------------------------
 
 def restore_command(config_path, archive_path):
     """Replace data/ with a backup. The current data is moved aside, not deleted."""
