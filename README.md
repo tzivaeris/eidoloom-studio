@@ -1,8 +1,11 @@
 # Eidoloom Studio
 
-Eidoloom Studio is a code editor in your browser with an AI agent working beside you. It looks like VS Code (file tree,
-editor tabs, terminals) with an agent chat on the side, and it runs on your own machine with your own models: Ollama,
-llama.cpp, vLLM or LM Studio. Nothing goes to a cloud service unless you add one.
+Eidoloom Studio is an AI agent harness with a code editor around it, in your browser. The harness is everything that
+turns a model into an agent: the loop that plans and calls tools, the tools themselves, approvals and undo, context
+management, and checks after every edit. The model is yours and interchangeable: Ollama, llama.cpp, vLLM, LM Studio or
+Strata, on your own machine. Nothing goes to a cloud service unless you add one.
+
+The editor looks like VS Code (file tree, editor tabs, terminals), with the agent's chat on the side.
 
 The agent reads your project, edits files and runs commands. It asks before each change unless you let it work on its
 own, and every change can be undone.
