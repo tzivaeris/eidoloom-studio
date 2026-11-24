@@ -1645,9 +1645,12 @@ z.close()`, bigXlsx]);
     check('Edit > Select nothing clears it', /Nothing selected/.test(await page.locator('.ae-selinfo').innerText()), await page.locator('.ae-selinfo').innerText());
     await page.locator('.ae-b', { hasText: 'Fit' }).click();
     await page.mouse.move(...at(0.02)); await page.mouse.down(); await page.mouse.move(...at(0.1, 0.6), { steps: 4 }); await page.mouse.move(...at(0.18), { steps: 4 }); await page.mouse.up();
-    const grabY = box.y + 20 + 5;
-    await page.mouse.move(box.x + box.width * 0.1, grabY); await page.mouse.down(); await page.mouse.move(box.x + box.width * 0.5, grabY, { steps: 6 }); await page.mouse.move(box.x + box.width * 0.75, grabY, { steps: 6 }); await page.mouse.up();
-    check('dragging the bar on top of a selection moves that part', await waitStatus(/Move (0\.9|1\.0)\d s/) && /0:06/.test(await info()), await status());
+    box = await page.locator('.ae-wave').boundingBox();             // again: the layout may have moved since (fonts differ between machines)
+    const grabY = box.y + 20 + 7;                                    // the middle of the grab band under the ruler (AE_RULER 20, AE_GRAB 14)
+    await page.mouse.move(box.x + box.width * 0.1, grabY);
+    const grabCursor = await page.evaluate(() => getComputedStyle(document.querySelector('.ae-wave canvas') || document.querySelector('.ae-wave')).cursor);
+    await page.mouse.down(); await page.mouse.move(box.x + box.width * 0.5, grabY, { steps: 6 }); await page.mouse.move(box.x + box.width * 0.75, grabY, { steps: 6 }); await page.mouse.up();
+    check('dragging the bar on top of a selection moves that part', await waitStatus(/Move (0\.9|1\.0)\d s/) && /0:06/.test(await info()), `${await status()} (cursor before the drag: ${grabCursor})`);
     check('the selection follows the part to its new place', /Selected 0:0[34]\./.test(await page.locator('.ae-selinfo').innerText()), await page.locator('.ae-selinfo').innerText());
     await page.keyboard.press('Escape');
     await page.mouse.click(...at(0.5));
@@ -1748,11 +1751,13 @@ z.close()`, bigXlsx]);
   section('office documents and the code map');
   {
     const office = project('office', { 'code.js': 'const a = 1;\n'.repeat(80) });
+    // Word pages, Page view and the PDF made from Word need LibreOffice and bubblewrap; the code map and sheets do not
+    const hasOffice = (() => { try { execFileSync('sh', ['-c', 'command -v bwrap && { command -v soffice || command -v libreoffice; }'], { stdio: 'ignore' }); return true; } catch { return false; } })();
     execFileSync('python3', ['-c', `import sys; sys.path.insert(0, sys.argv[1]); import studio, os
 d = sys.argv[2]
 open(os.path.join(d, 'letter.docx'), 'wb').write(studio.markdown_docx('# Επιστολή\\n\\nΚαλημέρα σας.\\n\\n\\\\pagebreak\\n\\n## Δεύτερη σελίδα\\n', 'Επιστολή'))
 open(os.path.join(d, 'book.xlsx'), 'wb').write(studio.sheets_xlsx([{'name': 'Έσοδα', 'rows': [['Μήνας', 'Ποσό'], ['Νοέμβριος', 1200], ['Σύνολο', '=SUM(B2)']]}, {'name': 'Έξοδα', 'rows': [['Είδος'], ['Χαρτί']]}]))
-open(os.path.join(d, 'paper.pdf'), 'wb').write(studio.office_convert(os.path.join(d, 'letter.docx'), 'pdf'))`, ROOT, office]);
+if sys.argv[3] == '1': open(os.path.join(d, 'paper.pdf'), 'wb').write(studio.office_convert(os.path.join(d, 'letter.docx'), 'pdf'))`, ROOT, office, hasOffice ? '1' : '0']);
     await openProject(office);
     if (await page.locator('.act.active[data-view="explorer"]').count() === 0) await page.click('.act[data-view="explorer"]');
     await page.locator('.t-row', { hasText: 'code.js' }).dblclick();
@@ -1766,6 +1771,8 @@ open(os.path.join(d, 'paper.pdf'), 'wb').write(studio.office_convert(os.path.joi
       check('and Alt+M shows it again', await page.waitForFunction(() => document.querySelector('.monaco-editor .minimap')?.getBoundingClientRect().width > 10, null, { timeout: 4000 }).then(() => true, () => false));
     } else check('Monaco loaded for the code map checks', false, 'no minimap');
     const pagesDrawn = () => page.waitForFunction(() => { const c = document.querySelector('#pane-preview .pdf-slot canvas'); return c && c.width > 100 && Number(document.querySelector('#pane-preview')?.dataset.pages) >= 1; }, null, { timeout: 30000 }).then(() => true, () => false);
+    if (!hasOffice) check('(LibreOffice or bubblewrap missing: the Word, Page view and PDF checks were skipped)', true);
+    else {
     await page.locator('.t-row', { hasText: 'letter.docx' }).dblclick();
     check('a Word file opens as its pages', await pagesDrawn() && await page.evaluate(() => Number(document.querySelector('#pane-preview').dataset.pages)) === 2, await page.textContent('#pane-preview'));
     check('with selectable text', await page.waitForFunction(() => /Καλημέρα/.test(document.querySelector('#pane-preview .textLayer')?.textContent || ''), null, { timeout: 8000 }).then(() => true, () => false));
@@ -1775,6 +1782,7 @@ open(os.path.join(d, 'paper.pdf'), 'wb').write(studio.office_convert(os.path.joi
     await page.click('#pane-preview button[title="Larger"]');
     check('Larger zooms in', parseInt(await page.textContent('#pane-preview .pdf-zoom-text')) > parseInt(before), before);
     if (process.env.STUDIO_SHOTS) await page.screenshot({ path: path.join(process.env.STUDIO_SHOTS, 'office-word.png') });
+    }
     await page.locator('.t-row', { hasText: 'book.xlsx' }).dblclick();
     check('a workbook opens as sheets of cells', await page.waitForSelector('#pane-preview .sheet-grid td', { timeout: 15000 }).then(() => true, () => false)
       && await page.locator('#pane-preview .sheet-tab').count() === 2 && (await page.textContent('#pane-preview .sheet-grid')).includes('Νοέμβριος'));
@@ -1782,10 +1790,12 @@ open(os.path.join(d, 'paper.pdf'), 'wb').write(studio.office_convert(os.path.joi
     await page.locator('#pane-preview .sheet-tab', { hasText: 'Έξοδα' }).click();
     check('its sheets are tabs', (await page.textContent('#pane-preview .sheet-grid')).includes('Χαρτί'));
     if (process.env.STUDIO_SHOTS) await page.screenshot({ path: path.join(process.env.STUDIO_SHOTS, 'office-excel.png') });
-    await page.click('#pane-preview button:has-text("Page view")');
-    check('Page view shows it as printed pages', await pagesDrawn());
-    await page.locator('.t-row', { hasText: 'paper.pdf' }).dblclick();
-    check('a PDF is drawn in Studio itself', await pagesDrawn() && await page.locator('#pane-preview iframe').count() === 0);
+    if (hasOffice) {
+      await page.click('#pane-preview button:has-text("Page view")');
+      check('Page view shows it as printed pages', await pagesDrawn());
+      await page.locator('.t-row', { hasText: 'paper.pdf' }).dblclick();
+      check('a PDF is drawn in Studio itself', await pagesDrawn() && await page.locator('#pane-preview iframe').count() === 0);
+    }
   }
 
   section('Codex as the chat agent (a fake codex app-server)');
