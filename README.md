@@ -4,6 +4,11 @@
 
 <h1 align="center">Eidoloom Studio</h1>
 
+<p align="center">
+  <a href="https://github.com/tzivaeris/eidoloom-studio/actions/workflows/tests.yml"><img src="https://github.com/tzivaeris/eidoloom-studio/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licence-AGPL--3.0-blue" alt="Licence: AGPL-3.0"></a>
+</p>
+
 Eidoloom Studio is an AI agent harness with a code editor around it, in your browser. The harness is everything that
 turns a model into an agent: the loop that plans and calls tools, the tools themselves, approvals and undo, context
 management, and checks after every edit. The model is yours and interchangeable: Ollama, llama.cpp, vLLM, LM Studio or

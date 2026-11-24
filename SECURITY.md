@@ -87,6 +87,6 @@ Everything is in `data/` beside `studio.py`, which is never served:
 
 ## Reporting a problem
 
-Please report security problems privately to the maintainer rather than in a public issue: <!-- security contact -->
-the contact address will be listed here before the first public release. Include what you did, what happened, and the
-version (the commit) you ran.
+Please report security problems privately rather than in a public issue: email tzivaeris@gmail.com, or use
+**Report a vulnerability** under the repository's Security tab. Include what you did, what happened, and the version
+(the commit) you ran. You should get an answer within a week.

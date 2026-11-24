@@ -2846,12 +2846,21 @@ def strata_adopt():
     return None
 
 
+def pid_alive(pid):
+    """A process that still runs: one that has ended but was not reaped (a zombie, say in a container with no init) does not."""
+    try:
+        with open(f"/proc/{pid}/stat") as fh:
+            return fh.read().rsplit(")", 1)[1].split()[0] != "Z"
+    except (OSError, IndexError):
+        return False
+
+
 def strata_running_pid():
     proc = STRATA_PROC.get("proc")
     if proc is not None:
         return proc.pid if proc.poll() is None else None
     pid = STRATA_PROC.get("pid")
-    return pid if pid and os.path.exists(f"/proc/{pid}") else None
+    return pid if pid and pid_alive(pid) else None
 
 
 def strata_stop():
@@ -2867,9 +2876,9 @@ def strata_stop():
                 except OSError:
                     break
             deadline = time.time() + wait
-            while time.time() < deadline and (os.path.exists(f"/proc/{pid}") and (STRATA_PROC.get("proc") is None or STRATA_PROC["proc"].poll() is None)):
+            while time.time() < deadline and (pid_alive(pid) and (STRATA_PROC.get("proc") is None or STRATA_PROC["proc"].poll() is None)):
                 time.sleep(0.2)
-            if not os.path.exists(f"/proc/{pid}") or (STRATA_PROC.get("proc") is not None and STRATA_PROC["proc"].poll() is not None):
+            if not pid_alive(pid) or (STRATA_PROC.get("proc") is not None and STRATA_PROC["proc"].poll() is not None):
                 break
         print(f"Strata stopped ({STRATA_PROC.get('model')})", flush=True)
     STRATA_PROC.update(proc=None, pid=None, model=None)
@@ -7318,11 +7327,11 @@ def tool_view_page(run, args):
     finally:
         if view:
             view.checking(False)
+    if seen is None:                  # no Chromium here: the page's HTML as text, without its scripts
+        seen = plain_page(token, path)
     if seen.get("shared") and not getattr(run, "browser_shown", False):
         run.browser_shown = True
         run.emit("open_browser")          # the person watches the check live in the Browser tab
-    if seen is None:                  # no Chromium here: the page's HTML as text, without its scripts
-        seen = plain_page(token, path)
     for old in sorted(os.listdir(shots), key=lambda n: os.path.getmtime(os.path.join(shots, n)))[:-MAX_LIVE_SHOTS]:
         os.remove(os.path.join(shots, old))
     has_shot = os.path.isfile(os.path.join(shots, shot_id + ".png"))
@@ -7532,8 +7541,17 @@ def check_program(argv, text, suffix, pattern):
     return line, msg
 
 
+MODULE_HINTS = ("Cannot use import statement outside a module", "Unexpected token 'export'",
+                "await is only valid", "import.meta")
+
+
 def check_js(text, rel):
-    return check_program(["node", "--check"], text, os.path.splitext(rel)[1], r"file\.\w+:(\d+)")
+    suffix = os.path.splitext(rel)[1]
+    found = check_program(["node", "--check"], text, suffix, r"file\.\w+:(\d+)")
+    # Node before 22 reads .js as CommonJS, so a module's import or export looks like an error: check it as a module too.
+    if found and suffix == ".js" and any(h in found[1] for h in MODULE_HINTS):
+        return check_program(["node", "--check"], text, ".mjs", r"file\.\w+:(\d+)")
+    return found
 
 
 def check_shell(text, rel):
