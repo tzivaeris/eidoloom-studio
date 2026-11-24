@@ -104,7 +104,7 @@ them.
 2. Open http://127.0.0.1:8790 and create the admin password.
 
 3. Point Studio at your model server: set `gateway` in `studio.config.json`, then run
-   `systemctl --user restart strata-studio`.
+   `systemctl --user restart eidoloom-studio`.
 
    | Server | `gateway` | Notes |
    | --- | --- | --- |

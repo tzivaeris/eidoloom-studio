@@ -4,7 +4,7 @@
 #   ./install.sh
 #
 # Studio itself needs only Python 3.10+ and systemd. This script checks them, makes the projects folder, and installs
-# the strata-studio user service (install-service.sh). Then open the address it prints, create the admin password,
+# the eidoloom-studio user service (install-service.sh). Then open the address it prints, create the admin password,
 # and install the tools from Account & settings → Tools & setup: one button for everything this machine can run.
 #
 # Not part of Studio, so not installed here: the model server (Ollama, llama.cpp, vLLM, LM Studio or the Ollama Manager),
@@ -54,7 +54,7 @@ fi
 
 if [[ "${service}" == 1 ]]; then
   "${DIR}/install-service.sh"
-  restart="systemctl --user restart strata-studio"
+  restart="systemctl --user restart eidoloom-studio"
 else
   restart="stop it (Ctrl+C) and start python3 ${DIR}/studio.py again"
 fi

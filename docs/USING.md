@@ -44,9 +44,9 @@ On macOS use Cmd for Ctrl.
 ## The service
 
 ```bash
-systemctl --user status strata-studio
-systemctl --user restart strata-studio
-journalctl --user -u strata-studio -f
+systemctl --user status eidoloom-studio
+systemctl --user restart eidoloom-studio
+journalctl --user -u eidoloom-studio -f
 ./install-service.sh --uninstall
 ```
 
@@ -70,7 +70,7 @@ tools through. Use a model that is good at tool calls; for llama.cpp start `llam
 **The first answer is slow.** The model loads into memory on its first request, which can take a minute.
 
 **The port is already in use.** `ss -ltnp | grep 8790` shows what holds it. Change `port` in the config, or stop the
-old copy. Why a start failed is in `journalctl --user -u strata-studio -n 50`.
+old copy. Why a start failed is in `journalctl --user -u eidoloom-studio -n 50`.
 
 **The editor is a plain text box.** The browser could not load Monaco from cdn.jsdelivr.net. The terminal then falls
 back to a simple line mode as well.

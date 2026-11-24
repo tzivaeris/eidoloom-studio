@@ -30,7 +30,7 @@ import urllib.request
 HOME = os.path.expanduser("~")
 OPT = os.path.join(HOME, ".local", "opt")
 LOCAL_BIN = os.path.join(HOME, ".local", "bin")
-UA = {"User-Agent": "strata-studio-installer/1.0"}
+UA = {"User-Agent": "eidoloom-studio-installer/1.0"}
 
 
 class Fail(Exception):

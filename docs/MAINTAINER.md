@@ -52,9 +52,10 @@ them.
 ## Names that stay as they were
 
 The project was called Strata Studio until 2026-11-20. These internal names were kept so that existing installs and the
-Ollama Manager keep working: the `strata-studio` service, the `studio_session_*` cookies, the `X-Studio` headers,
+Ollama Manager keep working: the `studio_session_*` cookies, the `X-Studio` headers,
 `.strata-studio/` in projects, the `strata-sandbox` images and network, and the gateway header
-`X-Application-Name: Strata Studio`, which the Manager's exemptions match.
+`X-Application-Name: Strata Studio`, which the Manager's exemptions match. The service was renamed `eidoloom-studio` in
+0.1.1; `install-service.sh` removes an old `strata-studio` service when it installs the new one.
 
 ## This machine's settings
 

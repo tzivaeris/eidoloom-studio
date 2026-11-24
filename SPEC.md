@@ -33,7 +33,7 @@ StrataStudio/
   web/index.html  web/app.js  web/app.css
   studio.config.json   # created on first start if missing
   data/                # runtime only: sessions/, checkpoints/, users.json, auth_sessions.json (never served)
-  README.md  install-service.sh  strata-studio.service
+  README.md  install-service.sh  eidoloom-studio.service
 ```
 
 ## Config (`studio.config.json`, created with defaults)

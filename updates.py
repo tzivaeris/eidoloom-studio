@@ -31,7 +31,7 @@ import urllib.request
 
 HOME = os.path.expanduser("~")
 OPT = os.path.join(HOME, ".local", "opt")
-UA = {"User-Agent": "strata-studio-updates/1.0"}
+UA = {"User-Agent": "eidoloom-studio-updates/1.0"}
 TORCH = re.compile(r"^(torch|torchvision|torchaudio|pytorch-triton-rocm|triton)==", re.I)
 
 

@@ -7,7 +7,8 @@
 # Run as the normal server user (the account you sign in with), never as root.
 set -euo pipefail
 
-UNIT_NAME="strata-studio.service"
+UNIT_NAME="eidoloom-studio.service"
+OLD_UNIT="strata-studio.service"           # the name before 0.1.1
 DEFAULT_PORT=8790
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_UNIT="${SCRIPT_DIR}/${UNIT_NAME}"
@@ -50,6 +51,16 @@ read_port() {
   printf '%s' "${port}"
 }
 
+# An install from before the rename has strata-studio.service: stop it and remove it, so the two never hold the same port.
+retire_old_unit() {
+  local old="${UNIT_DIR}/${OLD_UNIT}"
+  [[ -f "${old}" ]] || return 0
+  systemctl --user disable --now "${OLD_UNIT}" >/dev/null 2>&1 || true
+  rm -f "${old}"
+  systemctl --user daemon-reload
+  log "Removed the old ${OLD_UNIT} (Eidoloom Studio's service is now ${UNIT_NAME})."
+}
+
 install_service() {
   command -v python3 >/dev/null 2>&1 || die "python3 not found in PATH."
   [[ -f "${SRC_UNIT}" ]] || die "unit file not found next to this script: ${SRC_UNIT}"
@@ -60,14 +71,11 @@ install_service() {
   fi
 
   mkdir -p "${UNIT_DIR}"
-  # The unit names %h/Projects/Tools/StrataStudio; a copy of Studio elsewhere gets its own folder written in.
+  retire_old_unit
+  # The unit has @STUDIO_DIR@ where this folder goes.
   local rendered
   rendered="$(mktemp)"
-  if [[ "${PROJECT_DIR}" == "${HOME}/Projects/Tools/StrataStudio" ]]; then
-    cp "${SRC_UNIT}" "${rendered}"
-  else
-    sed "s|%h/Projects/Tools/StrataStudio|${PROJECT_DIR}|g" "${SRC_UNIT}" > "${rendered}"
-  fi
+  sed "s|@STUDIO_DIR@|${PROJECT_DIR}|g" "${SRC_UNIT}" > "${rendered}"
   SRC_UNIT="${rendered}"
   local unit_changed=0
   if [[ -f "${DEST_UNIT}" ]] && cmp -s "${SRC_UNIT}" "${DEST_UNIT}"; then
@@ -116,6 +124,7 @@ install_service() {
 
 uninstall_service() {
   check_user_manager
+  retire_old_unit
 
   if systemctl --user disable --now "${UNIT_NAME}" >/dev/null 2>&1; then
     log "Stopped and disabled ${UNIT_NAME}."

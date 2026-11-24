@@ -3,8 +3,8 @@ Description=Eidoloom Studio browser IDE (studio.py)
 After=network-online.target
 
 [Service]
-WorkingDirectory=%h/Projects/Tools/StrataStudio
-ExecStart=/usr/bin/python3 %h/Projects/Tools/StrataStudio/studio.py
+WorkingDirectory=@STUDIO_DIR@
+ExecStart=/usr/bin/python3 @STUDIO_DIR@/studio.py
 Restart=on-failure
 RestartSec=3
 Environment=PYTHONUNBUFFERED=1
