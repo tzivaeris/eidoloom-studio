@@ -11,8 +11,9 @@
 
 Eidoloom Studio is an AI agent harness with a code editor around it, in your browser. The harness is everything that
 turns a model into an agent: the loop that plans and calls tools, the tools themselves, approvals and undo, context
-management, and checks after every edit. The model is yours and interchangeable: Ollama, llama.cpp, vLLM, LM Studio or
-Strata, on your own machine. Nothing goes to a cloud service unless you add one.
+management, and checks after every edit. The model is yours and interchangeable: [Ollama](https://ollama.com),
+[llama.cpp](https://github.com/ggml-org/llama.cpp), [vLLM](https://github.com/vllm-project/vllm),
+[LM Studio](https://lmstudio.ai) or [Strata](https://github.com/Niko1221/Strata), on your own machine. Nothing goes to a cloud service unless you add one.
 
 The editor looks like VS Code (file tree, editor tabs, terminals), with the agent's chat on the side.
 
@@ -108,11 +109,11 @@ them.
 
    | Server | `gateway` | Notes |
    | --- | --- | --- |
-   | Ollama | `http://127.0.0.1:11434` (the default) | Give it a long context, since agent prompts are 10–30K tokens: set `OLLAMA_CONTEXT_LENGTH=32768` or more for the Ollama service. |
-   | llama.cpp | `http://127.0.0.1:8080` | Start `llama-server` with `--jinja`, so tool calls work, and a large `-c`. |
-   | vLLM | `http://127.0.0.1:8000` | Start it with `--enable-auto-tool-choice` and the model's `--tool-call-parser`. |
-   | LM Studio | `http://127.0.0.1:1234` | Start its server in the Developer tab. |
-   | Strata | `http://127.0.0.1:8080` | Its own server; or let Studio start it, see [Works with Strata](#works-with-strata). |
+   | [Ollama](https://ollama.com) | `http://127.0.0.1:11434` (the default) | Give it a long context, since agent prompts are 10–30K tokens: set `OLLAMA_CONTEXT_LENGTH=32768` or more for the Ollama service. |
+   | [llama.cpp](https://github.com/ggml-org/llama.cpp) | `http://127.0.0.1:8080` | Start `llama-server` with `--jinja`, so tool calls work, and a large `-c`. |
+   | [vLLM](https://github.com/vllm-project/vllm) | `http://127.0.0.1:8000` | Start it with `--enable-auto-tool-choice` and the model's `--tool-call-parser`. |
+   | [LM Studio](https://lmstudio.ai) | `http://127.0.0.1:1234` | Start its server in the Developer tab. |
+   | [Strata](https://github.com/Niko1221/Strata) | `http://127.0.0.1:8080` | Its own server; or let Studio start it, see [Works with Strata](#works-with-strata). |
 
    If the server needs a key (`--api-key`), put it in `gateway_key`. An address ending in `/v1` works too.
 
