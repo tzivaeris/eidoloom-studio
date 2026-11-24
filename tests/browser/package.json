@@ -1,5 +1,5 @@
 {
-  "name": "strata-studio-browser-tests",
+  "name": "eidoloom-studio-browser-tests",
   "private": true,
   "type": "module",
   "scripts": {

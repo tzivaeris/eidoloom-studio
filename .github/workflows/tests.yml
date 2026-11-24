@@ -22,3 +22,28 @@ jobs:
           git config --global user.email "tests@example.com"
       - name: Backend tests
         run: python3 tests/test_backend.py
+
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tests/browser/package-lock.json
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - name: Git identity for the tests' repositories
+        run: |
+          git config --global user.name "Eidoloom tests"
+          git config --global user.email "tests@example.com"
+      - name: Playwright and Chromium
+        working-directory: tests/browser
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Browser tests
+        working-directory: tests/browser
+        run: node run.mjs
