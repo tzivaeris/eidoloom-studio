@@ -15,7 +15,8 @@ const projects = path.join(tmp, 'projects');
 process.env.MOCK_CODEX_LOG = path.join(tmp, 'codex.jsonl');      // the fake Codex keeps its conversations beside the test
 let passed = 0, failed = 0;
 const check = (label, ok, detail = '') => { ok ? passed++ : failed++; console.log(`${ok ? '  ok  ' : '  FAIL'}  ${label}${ok ? '' : '   ' + String(detail).slice(0, 300)}`); };
-const section = name => { console.log(name); globalThis.__probe?.(name); };
+let currentSection = '';
+const section = name => { currentSection = name; console.log(name); globalThis.__probe?.(name); };
 const freePort = () => new Promise(resolve => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const { port } = s.address(); s.close(() => resolve(port)); }); });
 const waitPort = async port => { for (let i = 0; i < 100; i++) { const ok = await new Promise(r => { const c = net.connect(port, '127.0.0.1', () => { c.end(); r(true); }); c.on('error', () => r(false)); }); if (ok) return; await new Promise(r => setTimeout(r, 100)); } throw new Error('port ' + port); };
 const git = (cwd, ...args) => execFileSync('git', ['-c', 'user.name=T', '-c', 'user.email=t@t', ...args], { cwd, encoding: 'utf8' });
@@ -2872,7 +2873,9 @@ if sys.argv[3] == '1': open(os.path.join(d, 'paper.pdf'), 'wb').write(studio.off
   check('nothing was logged as an error, including the old AMD clash', real.length === 0, real.join(' | '));
   if (real.some(e => / 500 /.test(e))) { const log = fs.readFileSync(path.join(tmp, 'studio.log'), 'utf8'); const i = log.lastIndexOf('Traceback'); console.log('server traceback:\n' + (i >= 0 ? log.slice(i, i + 2500) : log.slice(-1500))); }
 } catch (e) {
-  check('the run completed without a crash', false, e.stack || e);
+  // on one line, so CI's annotation shows where: the section, the test line, and the error
+  const where = String(e && e.stack || '').split('\n').find(l => l.includes('run.mjs')) || '';
+  check('the run completed without a crash', false, `in "${currentSection}" at ${where.trim().replace(/^at /, '')}: ${String(e && e.message || e).split('\n')[0]}`);
   console.log('page errors:', errors.join(' | '));
 } finally {
   await browser.close();
