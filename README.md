@@ -1,4 +1,8 @@
-# Eidoloom Studio
+<p align="center">
+  <img src="web/assets/eidoloom-mark-original.png" width="140" alt="The Eidoloom Studio logo">
+</p>
+
+<h1 align="center">Eidoloom Studio</h1>
 
 Eidoloom Studio is an AI agent harness with a code editor around it, in your browser. The harness is everything that
 turns a model into an agent: the loop that plans and calls tools, the tools themselves, approvals and undo, context
