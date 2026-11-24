@@ -36,11 +36,9 @@ The server is one Python file using only the standard library, so there is nothi
   rights per person, and a waiting line takes turns on the one model.
 - **Help for the agent.** Plans as checklists, questions with choices, goals it keeps working towards, scheduled tasks,
   skills it saves and reuses, and a check after every edit that the file still parses.
-- **Optional tools.** Web search, a browser the agent drives, pictures ([ComfyUI](https://github.com/Comfy-Org/ComfyUI)),
-  voices ([VoxCPM2](https://github.com/OpenBMB/VoxCPM)), music ([ACE-Step 1.5](https://github.com/ace-step/ACE-Step-1.5)
-  or [HeartMuLa](https://github.com/HeartMuLa/heartlib)), sound effects
-  ([MOSS-SoundEffect](https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0)), video editing and
-  [Blender](https://www.blender.org), each installed with one button in Account & settings → Tools & setup.
+- **Optional tools.** Web search, a browser the agent drives, pictures, video clips, voices, music, sound effects,
+  Blender, Office documents, Greek checks, email and more, most installed with one button. See
+  [Optional tools](#optional-tools).
 - **Phones too.** One section at a time, with big touch targets.
 
 ## Screenshots
@@ -80,8 +78,30 @@ sound's waveform.
   <img src="docs/screenshots/media.png" width="49%" alt="The Media view: every picture, sound and video in the project">
 </p>
 
-The picture, sound, music, voice, video and Blender tools are optional; Account & settings → Tools & setup installs
-them.
+## Optional tools
+
+Studio works without any of these. Account & settings → Tools & setup checks what the machine has, installs each one
+(all but email) with a button, and writes one `sudo` script for the system packages they need. The
+picture, video, voice, music and sound engines need a graphics card; Tools & setup supports AMD cards (ROCm) today.
+
+| Tool | Built on |
+| --- | --- |
+| Web search | [SearXNG](https://github.com/searxng/searxng) on your machine, through [mcp-searxng](https://github.com/ihor-sokoliuk/mcp-searxng) |
+| Reading web pages | The reference [Fetch](https://github.com/modelcontextprotocol/servers/tree/main/src/fetch) server |
+| A browser the agent drives | [Playwright MCP](https://github.com/microsoft/playwright-mcp) and Chromium, shown live in the Browser tab |
+| Library documentation | [Context7](https://github.com/upstash/context7) |
+| Pictures | [ComfyUI](https://github.com/Comfy-Org/ComfyUI) with [Z-Image](https://github.com/Tongyi-MAI/Z-Image); also [SDXL](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) and [Qwen-Image](https://github.com/QwenLM/Qwen-Image) |
+| Video clips | [Wan 2.2](https://github.com/Wan-Video/Wan2.2) in ComfyUI |
+| Video and sound editing | [FFmpeg](https://ffmpeg.org), with Studio's timeline and wave editors |
+| Voices | [VoxCPM2](https://github.com/OpenBMB/VoxCPM) |
+| Music | [ACE-Step 1.5](https://github.com/ace-step/ACE-Step-1.5) or [HeartMuLa](https://github.com/HeartMuLa/heartlib) |
+| Sound effects | [MOSS-SoundEffect](https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0) |
+| 3D | [Blender](https://www.blender.org), through [MCP for Blender](https://pypi.org/project/mcp-for-blender/) |
+| Office documents and PDFs | [LibreOffice](https://www.libreoffice.org), run in a sandbox |
+| Greek spelling and grammar | [LanguageTool](https://languagetool.org), plus Studio's own agreement rules and glossary |
+| Email campaigns | [listmonk](https://listmonk.app), set up by hand ([its README](sandbox/mcp-listmonk/README.md)) |
+| Codex as the agent | OpenAI's [Codex CLI](https://github.com/openai/codex) with your ChatGPT plan; its model runs on OpenAI's servers |
+| Anything else | Any [MCP](https://modelcontextprotocol.io) server, added in Account & settings → Tool servers |
 
 ## Requirements
 
