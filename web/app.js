@@ -732,9 +732,9 @@ $('#btn-about').onclick = () => {
       el('div', { class: 'about-brand brand-lockup', 'aria-label': 'Eidoloom Studio' },
         el('img', { class: 'brand-mark', src: 'assets/eidoloom-mark-original.png', alt: '' }),
         el('span', { class: 'brand-name' }, 'Eidoloom ', el('small', { text: 'Studio' }))),
-      el('p', { text: 'Eidoloom Studio is a code editor that runs in your browser, with an AI agent working beside you. It has a file explorer, an editor, terminals and an agent chat.' }),
+      el('p', { text: 'Eidoloom Studio is an AI agent harness with a code editor around it, in your browser. The harness is what turns a model into an agent: the loop that plans and calls tools, the tools themselves, approvals and undo, and a check after every edit. Around it are a file explorer, an editor, terminals and the agent\'s chat.' }),
       el('p', { text: 'The name joins eidolon (εἴδωλον, an image or likeness) and loom: a place where code, pictures, voices and video are woven together.' }),
-      el('p', { text: 'The agent uses your own models, from Ollama, llama.cpp, vLLM, LM Studio or the Ollama Manager. It can read and edit your files and run commands, and it asks for your approval first unless you turn on the auto options. Each folder can run in its own sandbox.' }),
+      el('p', { text: 'The model is yours and interchangeable: Ollama, llama.cpp, vLLM, LM Studio or Strata, on your own machine. The agent reads and edits your files and runs commands, and asks for your approval first unless you turn on the auto options. Each folder can run in its own sandbox.' }),
       el('div', { class: 'dlg-sub', text: 'Made by' }),
       el('p', { text: 'John Chatzopoulos' }),
       el('p', { class: 'muted', text: 'November 2026' }),
@@ -754,7 +754,7 @@ async function openGuide(query = '') {
     try { guideDoc = new DOMParser().parseFromString(await (await fetch('/web/guide.html', { cache: 'no-cache' })).text(), 'text/html'); }
     catch { window.open('/web/guide.html', '_blank', 'noopener'); return; }
   }
-  let lang = lsGet('studio.guideLang') || ((navigator.language || '').startsWith('el') ? 'el' : 'en');
+  let lang = lsGet('studio.guideLang') || 'en';                // English unless the person picked Greek
   const search = el('input', { type: 'search', class: 'gd-search', placeholder: 'Search the guide', value: query, 'aria-label': 'Search the guide', spellcheck: 'false' });
   const toc = el('nav', { class: 'gd-toc', 'aria-label': 'Contents' }), body = el('div', { class: 'gd-body' });
   const count = el('div', { class: 'gd-count' });
