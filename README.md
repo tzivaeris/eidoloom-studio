@@ -31,15 +31,41 @@ The server is one Python file using only the standard library, so there is nothi
 
 <p>
   <img src="docs/screenshots/approval.png" width="49%" alt="An edit waiting for approval: the diff, with Choose parts, Open diff, Reject and Accept">
-  <img src="docs/screenshots/dashboard.png" width="49%" alt="The model dashboard: GPU, VRAM, CPU, RAM, context and temperature gauges, and what is loaded on the card">
-</p>
-<p>
-  <img src="docs/screenshots/phone.png" width="260" alt="Studio on a phone: the chat with the run's summary">
+  <img src="docs/screenshots/dashboard.png" width="49%" alt="The model dashboard: GPU, VRAM, CPU, RAM, context and temperature gauges, and what is loaded on the graphics card">
 </p>
 
-Every edit waits for your yes unless you turn on auto-apply (left). The model dashboard shows the card and memory live
-(right). On a phone, Studio shows one section at a time (below). The model is Keystone, a Strata profile, on an AMD
-Radeon RX 7900 XTX.
+Every edit waits for your yes unless you turn on auto-apply (left), and the model dashboard shows the graphics card and
+memory live (right). The model in these pictures is Qwen3.8-Flash-Next, served by Strata.
+
+<p>
+  <img src="docs/screenshots/phone-chat.png" width="260" alt="Studio on a phone: the agent's summary of a finished run">
+  &nbsp;
+  <img src="docs/screenshots/phone-audio.png" width="260" alt="Studio on a phone: the narrated line in the sound player">
+</p>
+
+On a phone, Studio shows one section at a time: the chat, the files, the editor and players, the terminal.
+
+## Made with Studio
+
+In one chat, the agent made all of this for the focus timer: a title picture (ComfyUI), a 3D model of the timer
+(Blender), a chime, a calm music bed and a narrated line ("Twenty-five minutes. One task. Let's begin."), then a
+15-second intro video with all of them on a timeline. It checked each piece itself, from the 3D viewport to the
+sound's waveform.
+
+<p>
+  <img src="docs/screenshots/picture.png" width="49%" alt="The title picture, made by ComfyUI, open in Studio's image viewer">
+  <img src="docs/screenshots/blender.png" width="49%" alt="The 3D tomato timer the agent built in Blender, with the agent's Blender steps beside it">
+</p>
+<p>
+  <img src="docs/screenshots/audio-editor.png" width="49%" alt="The music bed in Studio's wave editor">
+  <img src="docs/screenshots/timeline.png" width="49%" alt="The intro video in Studio's timeline editor: the picture, the music, the narration and the chime">
+</p>
+<p>
+  <img src="docs/screenshots/media.png" width="49%" alt="The Media view: every picture, sound and video in the project">
+</p>
+
+The picture, sound, music, voice, video and Blender tools are optional; Account & settings → Tools & setup installs
+them.
 
 ## Requirements
 
