@@ -37,8 +37,10 @@ The server is one Python file using only the standard library, so there is nothi
 - **Help for the agent.** Plans as checklists, questions with choices, goals it keeps working towards, scheduled tasks,
   skills it saves and reuses, and a check after every edit that the file still parses.
 - **Optional tools.** Web search, a browser the agent drives, pictures ([ComfyUI](https://github.com/Comfy-Org/ComfyUI)),
-  voices, music, sound effects, video editing and [Blender](https://www.blender.org), each installed with one button in
-  Account & settings → Tools & setup.
+  voices ([VoxCPM2](https://github.com/OpenBMB/VoxCPM)), music ([ACE-Step 1.5](https://github.com/ace-step/ACE-Step-1.5)
+  or [HeartMuLa](https://github.com/HeartMuLa/heartlib)), sound effects
+  ([MOSS-SoundEffect](https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0)), video editing and
+  [Blender](https://www.blender.org), each installed with one button in Account & settings → Tools & setup.
 - **Phones too.** One section at a time, with big touch targets.
 
 ## Screenshots
