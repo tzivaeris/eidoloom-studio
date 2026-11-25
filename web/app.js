@@ -1137,6 +1137,7 @@ async function paneServers(box) {
     stop();
     if (servers.some(s => s.state === 'starting') && document.body.contains(box)) timer = setTimeout(load, 2000);
   }
+  box.replaceChildren(acHead('Tool servers', 'Extra tools for the agent, such as Blender, a database, pictures or voices.'), el('div', { class: 'dir-note', text: 'Loading…' }));
   await load();
   search.value = filter;
 }

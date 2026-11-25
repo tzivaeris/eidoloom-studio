@@ -2743,8 +2743,13 @@ if sys.argv[3] == '1': open(os.path.join(d, 'paper.pdf'), 'wb').write(studio.off
   }
   if (shots) await page.screenshot({ path: shots + '/account-users.png' });
   await api('/api/admin/mcp', { servers: [{ name: 'mock', command: 'python3', args: [path.join(ROOT, 'tests', 'mock_mcp.py')], app_command: 'python3 -c pass', app_port: 1, app_window: 'hidden', env: { MOCK_URL: 'http://x', MOCK_TOKEN: '' } }] });
-  await page.click('.ac-nav button[data-section="servers"]');
-  await page.waitForSelector('.ac-pane h3:has-text("Tool servers")');
+  // opens the section, clicking again once if it has not opened (a GitHub runner once waited 30 s here)
+  let serversOpen = false;
+  for (let i = 0; i < 2 && !serversOpen; i++) {
+    await page.click('.ac-nav button[data-section="servers"]');
+    serversOpen = await page.waitForSelector('.ac-pane h3:has-text("Tool servers")', { timeout: 15000 }).then(() => true, () => false);
+  }
+  check('Tool servers opens from the side menu', serversOpen, await page.locator('.ac-pane').innerText().catch(e => e.message));
   await page.waitForSelector('.mcp-card', { timeout: 10000 }).catch(() => {});
   check('tool servers are compact cards with a state, chips and a switch', await page.locator('.mcp-card').count() === 1 && await page.locator('.mcp-card .ac-toggle').count() === 1
     && (await page.textContent('.mcp-card .mcp-chips')).includes('Needs python3'), await page.textContent('.mcp-card'));
