@@ -24,6 +24,19 @@ The server is one Python file using only the standard library, so there is nothi
 
 ![Eidoloom Studio: the agent has added a Reset button to a small web page, and its run ends with the files it changed and a summary](docs/screenshots/agent-run.png)
 
+### Watch a run
+
+![A local Strata model in Studio: Studio catches a test failure hidden behind a pipe, an edit is rejected with a note and redone, a second bug shows up after the first fix and is fixed too, and the tests pass](docs/demo.gif)
+
+A real run with a local Strata model, uncut, with captions added, at 1.6× speed:
+- the test command exits 0, but Studio checks every part of the pipe and reports that `python3` exited 1;
+- the first edit is rejected with a note typed while the agent works (by the recording script, in the user's place), and it
+  redoes the fix the way it was asked;
+- one test still fails after that fix, because of a second bug the first one hid, and the agent finds it too;
+- the tests pass, and Studio runs them once more itself.
+
+[The same run at normal speed (MP4, 70 s)](docs/demo.mp4).
+
 ## What it does
 
 - **An agent that asks first.** Edits arrive as cards with a diff (accept all, some parts, or none); commands as cards
