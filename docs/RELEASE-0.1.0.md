@@ -36,4 +36,3 @@ model server. See the README for the details.
 - Linux only; developed on Ubuntu 24.04.
 - The editor and terminal load from cdn.jsdelivr.net, so the browser needs to reach it.
 - The picture, voice, music and video engines in Tools & setup are written for AMD graphics cards (ROCm).
-- The Windows helper (folders on a person's own computer) builds but has not been run on Windows yet.
