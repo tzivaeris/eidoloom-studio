@@ -857,8 +857,11 @@ function openAccount(section = 'profile') {
   const show = key => {
     lsSet('studio.accountSection', key);
     nav.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.section === key));
-    pane.replaceChildren(el('div', { class: 'dir-note', text: 'Loading…' })); pane.scrollTop = 0;
-    Promise.resolve(panes[key](pane)).catch(e => pane.replaceChildren(el('div', { class: 'dir-note', text: e.message })));
+    // a fresh box for each visit: a section that answers late (a slow load, a refresh) draws into its own old box,
+    // which is no longer on screen, instead of over the section the person moved to
+    const box = el('div', { class: 'ac-pane-box', style: 'display: contents' }, el('div', { class: 'dir-note', text: 'Loading…' }));
+    pane.replaceChildren(box); pane.scrollTop = 0;
+    Promise.resolve(panes[key](box)).catch(e => box.replaceChildren(el('div', { class: 'dir-note', text: e.message })));
   };
   let admin = false;
   for (const [key, label, icon, visible] of ACCOUNT_SECTIONS) {

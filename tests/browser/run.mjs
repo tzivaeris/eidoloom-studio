@@ -16,6 +16,9 @@ process.env.MOCK_CODEX_LOG = path.join(tmp, 'codex.jsonl');      // the fake Cod
 let passed = 0, failed = 0;
 const check = (label, ok, detail = '') => { ok ? passed++ : failed++; console.log(`${ok ? '  ok  ' : '  FAIL'}  ${label}${ok ? '' : '   ' + String(detail).slice(0, 300)}`); };
 let currentSection = '';
+// STUDIO_EVIDENCE (set in CI): on a failure, a Playwright trace of the run, a screenshot at a crash and Studio's log go there
+const EVIDENCE = process.env.STUDIO_EVIDENCE || '';
+let traced = null, shotPage = null;
 const section = name => { currentSection = name; console.log(name); globalThis.__probe?.(name); };
 const freePort = () => new Promise(resolve => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const { port } = s.address(); s.close(() => resolve(port)); }); });
 const waitPort = async port => { for (let i = 0; i < 100; i++) { const ok = await new Promise(r => { const c = net.connect(port, '127.0.0.1', () => { c.end(); r(true); }); c.on('error', () => r(false)); }); if (ok) return; await new Promise(r => setTimeout(r, 100)); } throw new Error('port ' + port); };
@@ -31,6 +34,11 @@ fs.mkdirSync(projects);
 const cfg = path.join(tmp, 'app', 'config.json');
 fs.mkdirSync(path.dirname(cfg));
 fs.writeFileSync(cfg, JSON.stringify({ codex: true, codex_command: `python3 ${path.join(ROOT, 'tests', 'mock_codex.py')}`, host: '127.0.0.1', port, voice_url: `http://127.0.0.1:${voicePort}`, gateway: `http://127.0.0.1:${gwPort}`, workspace_roots: [projects], default_model: 'keystone:strata', max_turns: 10, user_root: path.join(tmp, 'users'), comfyui_url: `http://127.0.0.1:${gwPort}`, updates: true, updates_catalog: 'test', installer_catalog: 'test' }));
+// Updates' nightly window (03:00-05:00 by default) away from now, so the safe fake item is not updated by itself
+// in the middle of the test when it runs at night
+const awayHour = (new Date().getHours() + 12) % 24;
+fs.mkdirSync(path.join(tmp, 'app', 'data', 'updates'), { recursive: true });
+fs.writeFileSync(path.join(tmp, 'app', 'data', 'updates', 'state.json'), JSON.stringify({ settings: { auto: true, window: [awayHour, (awayHour + 2) % 24] } }));
 const gw = spawn('python3', [path.join(ROOT, 'mock_gateway.py'), String(gwPort)], { stdio: 'ignore', env: { ...process.env, MOCK_CONTEXT_TOKENS: '1000' } });
 const studioLog = fs.openSync(path.join(tmp, 'studio.log'), 'a');   // read back when a page request fails with 500
 let studio = spawn('python3', [path.join(ROOT, 'studio.py'), '--config', cfg], { stdio: ['ignore', studioLog, studioLog], env: { ...process.env, PYTHONUNBUFFERED: '1' } });
@@ -45,6 +53,7 @@ try {
   await waitPort(gwPort); await waitPort(port);
   const context = await browser.newContext({ viewport: { width: 1400, height: 900 }, acceptDownloads: true });
   const page = await context.newPage();
+  if (EVIDENCE) { fs.mkdirSync(EVIDENCE, { recursive: true }); traced = context; shotPage = page; await context.tracing.start({ screenshots: true, snapshots: true }); }
   page.on('pageerror', e => errors.push('page: ' + e.message));
   page.on('console', m => { if (m.type() === 'error' && !/favicon/.test(m.text())) errors.push(m.text()); });
   page.on('response', r => { if (r.status() >= 500) errors.push(`HTTP ${r.status()} from ${r.url().replace(/\/(preview|live)\/[^/]+\//, '/$1/…/')}`); });
@@ -664,6 +673,8 @@ try {
   check('the three buttons sit side by side without overlapping', btnBoxes[0][1] <= btnBoxes[1][0] && btnBoxes[1][1] <= btnBoxes[2][0], JSON.stringify(btnBoxes));
   await page.fill('#agent-input', 'Use port 9000'); await page.keyboard.press('Enter');
   await page.waitForSelector('.m-user.guided');
+  // the box empties when the server accepts the message, which a slow machine may report after the chat shows it
+  await page.waitForFunction(() => document.querySelector('#agent-input').value === '', null, { timeout: 10000 }).catch(() => {});
   check('Enter tells the agent now: the message shows at once, marked', (await page.locator('.m-user.guided').innerText()).includes('Use port 9000') && (await page.locator('.m-user.guided .guide-tag').innerText()).toLowerCase() === 'steer'
         && (await page.inputValue('#agent-input')) === '');
   await page.fill('#agent-input', 'Then write the docs'); await page.keyboard.press('Alt+Enter');
@@ -2882,7 +2893,10 @@ if sys.argv[3] == '1': open(os.path.join(d, 'paper.pdf'), 'wb').write(studio.off
   const where = String(e && e.stack || '').split('\n').find(l => l.includes('run.mjs')) || '';
   check('the run completed without a crash', false, `in "${currentSection}" at ${where.trim().replace(/^at /, '')}: ${String(e && e.message || e).split('\n')[0]}`);
   console.log('page errors:', errors.join(' | '));
+  if (shotPage) await shotPage.screenshot({ path: path.join(EVIDENCE, 'crash.png') }).catch(() => {});
 } finally {
+  if (traced) await traced.tracing.stop(failed ? { path: path.join(EVIDENCE, 'trace.zip') } : undefined).catch(() => {});
+  if (EVIDENCE && failed) fs.copyFileSync(path.join(tmp, 'studio.log'), path.join(EVIDENCE, 'studio.log'));
   await browser.close();
   studio.kill(); gw.kill(); voiceEngine.kill();
   fs.rmSync(tmp, { recursive: true, force: true });

@@ -131,7 +131,7 @@ picture, video, voice, music and sound engines need a graphics card; Tools & set
 1. Get the code and install the service, as your normal user (not root):
 
    ```bash
-   git clone <repository address> eidoloom-studio
+   git clone https://github.com/tzivaeris/eidoloom-studio.git
    cd eidoloom-studio
    ./install.sh
    ```

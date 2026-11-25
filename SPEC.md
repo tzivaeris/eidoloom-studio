@@ -10,8 +10,10 @@ Layout: VS Code-like — file tree left, tabbed Monaco editor centre, agent chat
 - **Backend: Python 3.10+ standard library only** (no pip installs). One process: `python3 studio.py`.
   Nothing may require `pip`/`npm` on the server.
 - **Frontend: static files** (`web/index.html`, `web/app.js`, `web/app.css`), no build step.
-  Monaco and xterm.js load from `https://cdn.jsdelivr.net/npm/...` with pinned versions
-  (`monaco-editor@0.52.2` AMD loader `min/vs/loader.js`; `@xterm/xterm@5.5.0`, `@xterm/addon-fit@0.10.0`).
+  Monaco, xterm.js, pdf.js, KaTeX and three.js load from `https://cdn.jsdelivr.net/npm/...` at exact versions pinned
+  in `web/index.html` and `web/app.js` (search for `@` and a version), which Account & settings → Updates moves
+  forward. On 2026-11-25: `monaco-editor@0.57.0` (AMD loader `min/vs/loader.js`), `@xterm/xterm@6.0.0`,
+  `@xterm/addon-fit@0.11.0`, `pdfjs-dist@4.10.38`, `katex@0.19.1`, `three@0.187.0`.
 - Default bind `127.0.0.1:8790` (this machine only) **with mandatory login**; `"host": "0.0.0.0"` opens it to the
   network. Config file decides.
 - Model gateway = the `gateway` setting (Ollama at `http://127.0.0.1:11434` in the example config). Endpoints used
@@ -23,7 +25,8 @@ Layout: VS Code-like — file tree left, tabbed Monaco editor centre, agent chat
   - `POST /v1/chat/completions` (OpenAI format) with `tools`, `stream: true` (SSE `data: {...}` lines, `data: [DONE]`).
     Deltas may contain `content`, `reasoning_content` (or `reasoning`), and `tool_calls` fragments
     (`index`, `id`, `function.name`, `function.arguments` pieces to concatenate). Always send header
-    `X-Application-Name: Strata Studio`. If streaming fails or yields nothing usable, retry once with
+    `X-Application-Name: Strata Studio` (the project's name before 2026-11-20, kept because the Ollama
+    Manager's exemptions match it). If streaming fails or yields nothing usable, retry once with
     `stream: false` and read `choices[0].message`. `max_tokens` default 8192, never above 16384.
     The first request to a Strata model may take 30-60 s (model loading): use a long timeout (1200 s) and emit a
     `status` event "Waiting for the model (it may be loading)…".

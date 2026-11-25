@@ -26,7 +26,7 @@ jobs:
           python3 tests/test_backend.py 2>&1 | tee test-output.txt
           status=${PIPESTATUS[0]}
           # each failing check becomes an annotation, readable on the run's page without opening the log
-          grep -E '^\s*FAIL|Error|Traceback' test-output.txt | head -40 | sed 's/^\s*/::error title=Failed check::/'
+          grep -E '^\s*FAIL|^Traceback|^[A-Za-z_.]+Error:' test-output.txt | head -40 | sed 's/^\s*/::error title=Failed check::/'
           tail -3 test-output.txt
           exit $status
 
@@ -56,17 +56,26 @@ jobs:
         run: |
           set +e
           report() {  # each failing check becomes an annotation: $1 is error or warning
-            grep -E '^\s*FAIL|Error|Traceback' test-output.txt | head -40 | sed "s/^\s*/::$1 title=Failed check::/"
+            grep -E '^\s*FAIL|^Traceback|^[A-Za-z_.]+Error:' test-output.txt | head -40 | sed "s/^\s*/::$1 title=Failed check::/"
             tail -3 test-output.txt
           }
-          node run.mjs 2>&1 | tee test-output.txt
+          STUDIO_EVIDENCE="$RUNNER_TEMP/evidence/first-run" node run.mjs 2>&1 | tee test-output.txt
           status=${PIPESTATUS[0]}
           if [ "$status" != 0 ]; then
             # the browser tests sometimes stall on GitHub's runners; the first failure stays visible as warnings
             echo "::warning title=Browser tests::the first run failed; running them once more"
             report warning
-            node run.mjs 2>&1 | tee test-output.txt
+            cp test-output.txt "$RUNNER_TEMP/evidence/first-run/test-output.txt" 2>/dev/null || true
+            STUDIO_EVIDENCE="$RUNNER_TEMP/evidence/second-run" node run.mjs 2>&1 | tee test-output.txt
             status=${PIPESTATUS[0]}
           fi
-          [ "$status" = 0 ] || report error
+          [ "$status" = 0 ] || { report error; cp test-output.txt "$RUNNER_TEMP/evidence/second-run/test-output.txt" 2>/dev/null || true; }
           exit $status
+      - name: Keep the evidence of a failure (trace, screenshot, Studio's log)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-test-evidence
+          path: ${{ runner.temp }}/evidence
+          if-no-files-found: ignore
+          retention-days: 14
