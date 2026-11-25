@@ -41,6 +41,17 @@ The server is one Python file using only the standard library, so there is nothi
   [Optional tools](#optional-tools).
 - **Phones too.** One section at a time, with big touch targets.
 
+## How it fits together
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/architecture-dark.svg">
+  <img src="docs/architecture-light.svg" alt="Your browser talks to studio.py over HTTPS. Inside studio.py is the harness: the agent loop, tools, approvals, undo points, context and cache, checks after edits, reply guards, goals and tasks; around it accounts, files and Git, terminals and the waiting room. studio.py calls your model server (Ollama, llama.cpp, vLLM, LM Studio, Strata, or Codex) through the chat API, optional tool servers through MCP, and works in your project folder, on the machine or in its own Docker sandbox.">
+</picture>
+
+The page is only the view: the agent runs on the server, so closing the browser does not stop a run, and any window
+or phone picks it up again. The model server and the tool servers are separate programs that Studio talks to, so
+each can be swapped or left out.
+
 ## Screenshots
 
 <p>
