@@ -55,6 +55,22 @@ The page is only the view: the agent runs on the server, so closing the browser 
 or phone picks it up again. The model server and the tool servers are separate programs that Studio talks to, so
 each can be swapped or left out.
 
+## Does the harness help?
+
+The same 14 agent tests, three times each, on one local Strata model, once with Studio's reply guards off and once
+with them on (retries of cut-off replies, recovered tool calls, script and language checks, checks after edits,
+reminders of the user's rules in long chats, a stable prompt for the cache, and the rest):
+
+| Guards | Passed | Failed | Automatic checks passed | Average run |
+| --- | --- | --- | --- | --- |
+| off | 22 of 42 | 11 | 100 of 114 (88%) | 14.4 turns, 2.0 min |
+| on | 25 of 42 | 7 | 106 of 114 (93%) | 15.7 turns, 2.2 min |
+
+The rest needed a person to judge the answer. The clearest difference was a long session: with the guards off the
+model broke a rule the user gave at the start in all three runs, with them on in none. One model and three
+repetitions is a small sample, so read it as a direction, not a score. The two runs that ended on a one-line summary
+instead of the answer led to a new guard, `answer_check`.
+
 ## Screenshots
 
 <p>
@@ -258,6 +274,7 @@ in Studio's Live tab. On Windows the helper has its own window and a tray icon, 
 - The guide inside Studio (the ? button) explains every feature, in English and Greek.
 - [docs/MAINTAINER.md](docs/MAINTAINER.md): how the code is laid out, how to run the tests, and how to work on it.
 - [SPEC.md](SPEC.md): the API and event contract between the page and the server.
+- [CHANGELOG.md](CHANGELOG.md): what changed in each release.
 
 ## Licence
 
