@@ -33,6 +33,7 @@ model server. See the README for the details.
 
 ## Known limits
 
-- Linux only; developed on Ubuntu 24.04.
+- The server runs on Linux only (developed on Ubuntu 24.04). Folders can also be on Windows or Linux computers,
+  through `studio-helper`.
 - The editor and terminal load from cdn.jsdelivr.net, so the browser needs to reach it.
 - The picture, voice, music and video engines in Tools & setup are written for AMD graphics cards (ROCm).

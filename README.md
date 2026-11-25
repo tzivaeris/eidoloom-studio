@@ -34,6 +34,9 @@ The server is one Python file using only the standard library, so there is nothi
   container, with the internet on, off, or only for installing packages.
 - **Several people.** Admins invite users; each user gets a private space, always sandboxed. Folders can be shared with
   rights per person, and a waiting line takes turns on the one model.
+- **Folders on your own computer, Windows or Linux.** Studio runs on a Linux server, but a person can work in a folder
+  on their own PC: the small `studio-helper` program connects it, and the agent's commands and terminals then run on
+  that computer. See [Folders on your own computer](#folders-on-your-own-computer).
 - **Help for the agent.** Plans as checklists, questions with choices, goals it keeps working towards, scheduled tasks,
   skills it saves and reuses, and a check after every edit that the file still parses.
 - **Optional tools.** Web search, a browser the agent drives, pictures, video clips, voices, music, sound effects,
@@ -116,7 +119,8 @@ picture, video, voice, music and sound engines need a graphics card; Tools & set
 
 ## Requirements
 
-- Linux with systemd and Python 3.10 or newer. It is developed on Ubuntu 24.04.
+- For the server: Linux with systemd and Python 3.10 or newer. It is developed on Ubuntu 24.04. People use it from any
+  browser, and their folders can also be on Windows or Linux computers (see below).
 - A model server that speaks the OpenAI chat API with tool calls (see below).
 - A browser that can reach cdn.jsdelivr.net, where the editor and terminal load from.
 - Optional: Docker for the sandbox, Git for source control, Node.js for checking pages. Tools & setup lists what each
@@ -221,6 +225,23 @@ Keep Studio on your own network. Anyone who can sign in can run commands as the 
 folder is sandboxed. For other computers, either set `"host": "0.0.0.0"`, or keep `127.0.0.1` and put a web server
 with HTTPS in front (for Caddy, `reverse_proxy 127.0.0.1:8790`, leaving the Host header as it is). Do not open the
 port to the internet. Read [SECURITY.md](SECURITY.md) first.
+
+## Folders on your own computer
+
+Studio runs on a Linux server, but the folders people work in can be on their own Windows or Linux computers:
+
+1. Build the helper once on the server: `bash tools/helper/build.sh`. It builds inside the sandbox image, so it needs
+   Docker and that image (Tools & setup installs both), and makes `studio-helper.exe` for Windows and `studio-helper`
+   for Linux.
+2. Admins can always connect a computer. For other people, turn on **Own computer** for them in Account & settings →
+   Users.
+3. In Studio: Open folder → **Connect a folder on my computer**. Download the helper for your system, start it, choose
+   the folder and type the pairing code Studio shows.
+
+The helper connects out to Studio, so nothing on the computer has to be reachable from outside, and it keeps the folder
+and a copy in Studio in step. The agent's edits, search and undo work as usual; its commands and terminals run on the
+computer itself (PowerShell on Windows), as that person and without a sandbox, and a web server it starts there shows
+in Studio's Live tab. On Windows the helper has its own window and a tray icon, and starts at sign-in.
 
 ## More
 
