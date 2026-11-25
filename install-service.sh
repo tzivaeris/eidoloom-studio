@@ -66,6 +66,7 @@ retire_old_unit() {
   systemctl --user disable --now "${OLD_UNIT}" >/dev/null 2>&1 || true
   rm -f "${old}"
   systemctl --user daemon-reload
+  systemctl --user reset-failed "${OLD_UNIT}" >/dev/null 2>&1 || true
   log "Removed the old ${OLD_UNIT} (Eidoloom Studio's service is now ${UNIT_NAME})."
 }
 
