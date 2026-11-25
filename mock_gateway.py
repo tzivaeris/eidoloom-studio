@@ -32,6 +32,7 @@ Special cases:
   - "use my tools": calls user__shout with input "hi; rm -rf x", then user__house_rules, then finishes with what they returned
   - "edit back and forth": writes notes.txt with three lines, then rewrites it with one of them, then finishes
   - "write a report": write_document report.docx from Markdown, then finishes
+  - "catalogue quietly": reads, then finishes with one line and no answer; after Studio's note, finishes with the full list
   - "announce": works once, then only says what it will do next ("twice": says it again after Studio's note; "ask": asks a question)
 """
 import json
@@ -297,6 +298,13 @@ def plan(req):
                 return "", "One question first.", ("ask_user", one)
             return "", "Two questions first.", ("ask_user", {"questions": [one, {"question": "Which pages need it?", "options": [{"label": "Home"}, {"label": "Settings"}, {"label": "Help"}], "multi": True}], "progress": "1/2"})
         return "", "Done.", ("finish", {"summary": "Got: " + str(messages[-1].get("content", ""))[:600]})
+    if "catalogue quietly" in user_text.lower():
+        noted = any(str(m.get("content", "")).startswith("Studio note: you only read files") for m in messages[idx + 1:])
+        if tools_seen == 0:
+            return "", "", ("list_files", {"path": "."})
+        if not noted:
+            return "", "", ("finish", {"summary": "Catalogued all the files in the folder."})
+        return "", "", ("finish", {"summary": "The folder holds:\n" + "\n".join(f"- file{i}.txt: notes for part {i} of the project" for i in range(12))})
     if "announce" in user_text.lower():
         # Works once, then says what it will do instead of doing it; "twice" says it again after Studio's note, "ask" asks instead.
         notes = sum(str(m.get("content", "")).startswith("Studio note: your reply says what you will do next") for m in messages[idx + 1:])

@@ -93,6 +93,7 @@ DEFAULT_CONFIG = {
     "session_cache_dir": "~/Projects/Tools/Strata-data/sessions",   # the profiles' slot_save_path; Studio prunes its own files there
     "session_cache_keep": 6,      # chats kept on disk (about 1.2 GB per 63K tokens each)
     "announce_check": True,       # a run that worked, then stops on "I'll do X next" with no tool call, is sent back once
+    "answer_check": True,         # a run that changed nothing and ends on a one-line finish, with no answer written, is sent back once
     "ask_tool": True,             # ask_user: the agent asks the user questions with choices, answered on a card
     "document_tool": True,        # write_document: the agent makes Word (.docx) and Excel (.xlsx) files
     "goal_max_rounds": 20,
@@ -6596,6 +6597,9 @@ class Run:
         self.steered = False
         self.worked = False                   # made a tool call in this run
         self.announce_nudges = 0
+        self.longest_text = 0                 # the longest reply text this run, to tell whether an answer was written
+        self.answer_noted = False             # sent back once a finish that left the answer out
+        self.only_read = True                 # every tool call so far only read the folder (list, read, search)
         self.nudged_last = False              # the last reply was sent back; a second text reply in a row ends the run
         self.approvals = {}
         self.last_parts = None                # the parts of an edit the user chose in the latest decision
@@ -9950,6 +9954,21 @@ NOT_GERUNDS = {"Nothing", "Everything", "Something", "Anything", "During", "Stri
                "Ceiling", "Building", "Ring", "Setting", "Heading", "Padding", "Spacing", "Rendering", "Lighting", "Painting", "Bring"}
 
 
+ANSWER_NOTE = ("Studio note: you only read files, and your finish summary only says what you did (\"{summary}\"), so the user "
+               "never sees the answer itself. Call finish again with the full answer in the summary: everything the user asked "
+               "for, as you would write it to them. If that one line is the whole answer, send it again as it is.")
+READING_TOOLS = {"list_files", "read_file", "search", "finish", "plan", "use_skill"}
+ANSWER_SHORT = 300          # a finish summary up to this long, with no reply text this long in the run, may have left the answer out
+
+
+def leaves_out_answer(run, summary):
+    """True for a finish after a run that only read the folder, whose summary is a line or two and was the only thing written:
+    a model in a benchmark read a project well, then finished with "Catalogued all HTTP routes…" and never listed them."""
+    s = (summary or "").strip()
+    return (APP.cfg["answer_check"] and run.worked and run.only_read and not run.changed and not run.answer_noted and not run.plan_mode
+            and len(s) <= ANSWER_SHORT and run.longest_text <= ANSWER_SHORT and not s.endswith("?"))
+
+
 def announces_work(text):
     """True for a short reply that only says what comes next ("Adding the back covers now."), which ends a run unfinished.
     A question to the user, a long summary or a report of what was done does not count."""
@@ -10076,6 +10095,7 @@ def agent_loop(run):
             return "cut_off", None
         retries = 0
         history.append({"role": "assistant", "content": result["content"], **({"tool_calls": calls} if calls else {})})
+        run.longest_text = max(run.longest_text, len((result["content"] or "").strip()))
         if not calls:
             why = script_problem(run, result["content"])
             if why:
@@ -10129,6 +10149,7 @@ def agent_loop(run):
                 args, parse_error = {}, str(exc)
             tc["function"]["arguments"] = json.dumps(args)
             run.emit("tool_call", id=tc["id"], name=name, args=clip_args(args))
+            run.only_read = run.only_read and name in READING_TOOLS
             run.current_tool = tc["id"]          # a tool's progress (MCP notifications/progress) goes to this row
             if run.stop or finished:
                 ok, summ, out = False, "Skipped", "Skipped: the run ended before this call."
@@ -10170,6 +10191,11 @@ def agent_loop(run):
             if why:
                 run.emit("status", text="The summary mixed scripts or languages. Asking the model to write it again…")
                 history.append({"role": "user", "content": SCRIPT_NOTE.format(what="finish summary", why=why) + " Call finish again with the rewritten summary."})
+                finished = False
+            elif leaves_out_answer(run, summary):
+                run.answer_noted = True
+                run.emit("status", text="The model finished without writing its answer. Asking it for the answer…")
+                history.append({"role": "user", "content": ANSWER_NOTE.format(summary=" ".join(summary.split())[:200])})
                 finished = False
 
         if calls:

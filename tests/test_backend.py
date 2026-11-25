@@ -2788,6 +2788,12 @@ def test_announce(c, projects, gw_port):
     check("a second announcement straight after the note ends the run", done["reason"] == "answered" and nudges == 1, (done, nudges))
     done, nudges, _ = run("Please announce and ask")
     check("a question to the user is not an announcement", done["reason"] == "answered" and nudges == 0, (done, nudges))
+    events = run_agent(c, ws, c.post("/api/agent/sessions", {"ws": ws})[1]["id"], "Please catalogue quietly", auto_apply=True, auto_commands=True)[1]
+    asked = [e for e in events if e["type"] == "status" and "without writing its answer" in e.get("text", "")]
+    finishes = [e for e in events if e["type"] == "tool_call" and e["name"] == "finish"]
+    check("a one-line finish after reading only is sent back once for the answer itself",
+          len(asked) == 1 and len(finishes) == 2 and events[-1]["reason"] == "finished" and "file11.txt" in (events[-1].get("summary") or ""),
+          (len(asked), len(finishes), events[-1]))
     done, nudges, _ = run("hello")
     check("a plain answer without any work is left alone", done["reason"] == "answered" and nudges == 0, (done, nudges))
     for text in ("Adding back covers — a darker plain panel with a text block and barcode on the opposite face of each book.",

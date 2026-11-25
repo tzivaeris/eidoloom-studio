@@ -149,6 +149,9 @@ Agent (one active run per workspace):
   once with a `Studio note` asking it to act or call finish. The page labels these messages "Steer".
 - With `announce_check`, a reply without a tool call that only announces the next step, in a run that has already used
   tools, is sent back with a `Studio note` (at most 3 times a run, never twice in a row) instead of ending the run.
+- With `answer_check`, a run that has only read the folder (list_files, read_file, search) and ends on a `finish` whose
+  summary is at most 300 characters, with no reply text that long in the run, is sent back once with a `Studio note`
+  asking for the full answer in the summary, since otherwise the user sees only "Catalogued all the routes".
 - `POST /api/agent/settings {"run","auto_apply"?,"auto_commands"?}` changes the auto modes of a running agent; pending approvals of a kind switched on are accepted.
 - `POST /api/agent/undo {"ws","checkpoint"}` → restores files changed by that checkpoint → `{"restored":[paths]}`.
 - `POST /api/agent/decision` for an `ask_user` card (`approval{kind:"question", questions[{question, header, options[{label,
