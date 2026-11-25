@@ -230,9 +230,18 @@ port to the internet. Read [SECURITY.md](SECURITY.md) first.
 
 Studio runs on a Linux server, but the folders people work in can be on their own Windows or Linux computers:
 
-1. Build the helper once on the server: `bash tools/helper/build.sh`. It builds inside the sandbox image, so it needs
-   Docker and that image (Tools & setup installs both), and makes `studio-helper.exe` for Windows and `studio-helper`
-   for Linux.
+1. Put the helper on the server once, for Studio to offer: download `studio-helper.exe` (Windows), `studio-helper`
+   (Linux) and `SHA256SUMS` from the [latest release](https://github.com/tzivaeris/eidoloom-studio/releases/latest)
+   into `tools/helper/dist/`, and check them:
+
+   ```bash
+   mkdir -p tools/helper/dist && cd tools/helper/dist
+   for f in studio-helper studio-helper.exe SHA256SUMS; do curl -fLO "https://github.com/tzivaeris/eidoloom-studio/releases/latest/download/$f"; done
+   sha256sum -c SHA256SUMS && chmod +x studio-helper
+   ```
+
+   Or build them yourself with `bash tools/helper/build.sh`, inside the sandbox image (Docker and that image, which
+   Tools & setup installs).
 2. Admins can always connect a computer. For other people, turn on **Own computer** for them in Account & settings →
    Users.
 3. In Studio: Open folder → **Connect a folder on my computer**. Download the helper for your system, start it, choose

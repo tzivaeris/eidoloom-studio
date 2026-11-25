@@ -31,6 +31,12 @@ cd eidoloom-studio
 Then open http://127.0.0.1:8790, create the admin password, and set `gateway` in `studio.config.json` to your
 model server. See the README for the details.
 
+## Files
+
+`studio-helper.exe` (Windows) and `studio-helper` (Linux) are the helper, version 0.08, that connects a folder on a
+person's own computer; put them in `tools/helper/dist/` on the server (the README's "Folders on your own computer").
+`SHA256SUMS` checks them.
+
 ## Known limits
 
 - The server runs on Linux only (developed on Ubuntu 24.04). Folders can also be on Windows or Linux computers,
