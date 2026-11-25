@@ -43,6 +43,14 @@ check_user_manager() {
   fi
 }
 
+read_host() {
+  local host="127.0.0.1"
+  if [[ -f "${CONFIG_FILE}" ]]; then
+    host="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("host", "127.0.0.1"))' "${CONFIG_FILE}" 2>/dev/null || echo "127.0.0.1")"
+  fi
+  printf '%s' "${host}"
+}
+
 read_port() {
   local port="${DEFAULT_PORT}"
   if [[ -f "${CONFIG_FILE}" ]]; then
@@ -113,10 +121,15 @@ install_service() {
   log ""
   systemctl --user --no-pager status "${UNIT_NAME}" || true
 
-  local ip port
-  ip="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
-  ip="${ip:-localhost}"
+  local ip port host
   port="$(read_port)"
+  host="$(read_host)"
+  if [[ "${host}" == "0.0.0.0" || "${host}" == "" ]]; then     # every address: show one other computers can use
+    ip="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+    ip="${ip:-127.0.0.1}"
+  else
+    ip="${host}"
+  fi
   log ""
   log "Eidoloom Studio: http://${ip}:${port}/"
   log "Logs: journalctl --user -u ${UNIT_NAME} -f"
