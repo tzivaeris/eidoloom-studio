@@ -53,7 +53,7 @@ if [[ -f "${DIR}/studio.config.json" ]]; then
 fi
 
 if [[ "${service}" == 1 ]]; then
-  "${DIR}/install-service.sh"
+  bash "${DIR}/install-service.sh"          # through bash: a ZIP download keeps no file modes
   restart="systemctl --user restart eidoloom-studio"
 else
   restart="stop it (Ctrl+C) and start python3 ${DIR}/studio.py again"

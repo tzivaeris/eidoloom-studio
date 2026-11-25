@@ -47,7 +47,7 @@ On macOS use Cmd for Ctrl.
 systemctl --user status eidoloom-studio
 systemctl --user restart eidoloom-studio
 journalctl --user -u eidoloom-studio -f
-./install-service.sh --uninstall
+bash install-service.sh --uninstall
 ```
 
 Studio keeps accounts, chats and settings in `data/` beside `studio.py`, and a daily copy of it in `backups/`.
