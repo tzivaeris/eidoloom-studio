@@ -77,15 +77,16 @@ cache, and the rest):
 
 | Guards | Passed | Failed | Automatic checks passed | Average run |
 | --- | --- | --- | --- | --- |
-| off | 98 of 120 | 13 | 262 of 279 (94%) | 8.8 turns, 0.9 min |
-| on | 98 of 120 | 11 | 266 of 279 (95%) | 9.7 turns, 1.1 min |
+| off | 97 of 120 | 13 | 263 of 279 (94%) | 9.6 turns, 1.1 min |
+| on | 104 of 120 | 2 | 277 of 279 (99%) | 10.4 turns, 1.2 min |
 
-The rest needed a person to judge the answer. Most failures were Chinese characters or half-Latin words in Greek
-text, so two guards were added after this run: Strata models can no longer write Chinese, Japanese, Korean or Cyrillic
-at all, and a word mixing Greek and Latin letters is repaired from a Greek lexicon. With them the 8 Greek tests went
-from 11 passed and 8 failed to 15 passed and 3 failed, with no stray character in any reply or file. Those 3 forgot a
-rule from the session's first message (a Greek docstring in every new function), which is the clearest gap left. One
-model and three repetitions is a small sample, so read it as a direction, not a score.
+The rest needed a person to judge the answer. The guards now include a ban on Chinese, Japanese, Korean, Cyrillic and
+other scripts the chat does not use, repairs of words mixing Greek and Latin letters, checks of the user's earlier rules
+and a check for a finish that leaves the answer out. The two tests that still failed were run again five times after
+a fix: with the guards 10 of 10 passed their checks, without them 6 of 10. On two smaller Qwen models with a 32K context
+window, long sessions ran out of room and ended on empty replies; Studio now shortens and, near the limit, summarizes
+the chat during the run, and those sessions finished. One model and a few repetitions is a small sample, so read it as
+a direction, not a score.
 
 ## Screenshots
 
