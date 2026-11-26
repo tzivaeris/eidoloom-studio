@@ -5913,6 +5913,16 @@ def test_script_ban(c, projects, gw_port):
     check("not when the user names one of those languages", sent and not any(r["logit_bias"] for r in sent))
     sent = sent_for("hello, what does the comment # 修复 in main.py say?")
     check("not when the conversation already holds such text, which the model may have to quote", sent and not any(r["logit_bias"] for r in sent))
+    saved, sm.APP = sm.APP, types.SimpleNamespace(cfg={}, gateway_kind="manager", strata_models=set())
+    try:
+        run = types.SimpleNamespace(model="keystone:strata")
+        note = {"role": "user", "content": sm.SCRIPT_NOTE.format(what="reply", why="2 Chinese characters (更正)")}
+        check("Studio's own send-back note, which names Chinese and quotes the characters, does not turn the ban off",
+              sm.wants_script_ban(run, [{"role": "user", "content": "Γράψε τα σχόλια στα ελληνικά"}, {"role": "assistant", "content": "Έγινε 更正"}, note]))
+        check("nor does a stray word in the model's own reply", sm.wants_script_ban(run, [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "σελίδα интерфейса"}]))
+        check("a file the model read still does", not sm.wants_script_ban(run, [{"role": "user", "content": "hi"}, {"role": "tool", "content": "# 注释"}]))
+    finally:
+        sm.APP = saved
     refused = c_post_json(gw_port, "/_mock/bias", {"refuse": True})["refused"]
     try:
         sid = c.post("/api/agent/sessions", {"ws": ws})[1]["id"]

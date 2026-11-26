@@ -10132,13 +10132,22 @@ def message_texts(message):
         yield str((call.get("function") or {}).get("arguments") or "")
 
 
+STUDIO_WORDS = ("Studio note", "Studio context", "You repeated")
+
+
 def wants_script_ban(run, messages):
     """Ban those scripts for this request, unless the conversation already holds them (a file the model may have to quote
-    exactly to edit it) or the user names one of those languages."""
+    exactly to edit it) or the user names one of those languages. The model's own replies do not count, nor do Studio's
+    notes: a send-back says "no Chinese or other characters", which turned the ban off for the rest of a benchmark chat
+    (test 14, 2026-11-26), and one stray word from the model would have done the same."""
     if not APP.cfg.get("script_ban", True) or not is_strata_model(run.model) or run.model in SCRIPT_BAN["refused"]:
         return False
     for message in messages:
+        if message.get("role") == "assistant":
+            continue
         for text in message_texts(message):
+            if message.get("role") == "user" and text.startswith(STUDIO_WORDS):
+                continue
             if FOREIGN_RE.search(text) or SCRIPT_BAN_CHARS.search(text):
                 return False
             if message.get("role") == "user" and SCRIPT_LANGUAGE_RE.search(typed_part(text)):

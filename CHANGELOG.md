@@ -5,16 +5,19 @@
 - **Strata models cannot write Chinese, Japanese, Korean or Cyrillic text** in a chat that has none and does not ask
   for those languages (`script_ban`, on by default): each request carries `logit_bias` banning the tokens of the
   model's vocabulary that would write them, read from the Strata profiles' `tokenizer/vocab.json` (or config
-  `strata_vocab`). An engine that refuses `logit_bias` is asked again without it.
+  `strata_vocab`). An engine that refuses `logit_bias` is asked again without it. Studio's own notes and the model's replies do not
+  turn it off.
 - **Words mixing Greek and Latin letters are repaired** («αρχείa» → «αρχεία», «υπάρχουνnoch» → «υπάρχουν»,
   «τρέχειserver» → «τρέχει server») when the Greek lexicon says which word was meant; the rest are sent back as before.
 - **A finish that leaves the answer out is sent back once** (`answer_check`, on by default). A run that only read
   the folder and ends on a one-line summary such as "Catalogued all the routes", without writing them, is asked for
   the answer itself.
-- The README shows a benchmark of the reply guards, on and off.
+- The README shows a benchmark of the reply guards, on and off, now over 40 tests, and the Greek tests again with
+  the script guards.
 - **Benchmark tests 15 to 40** (`sandbox/prompts/BENCH_TESTS.md`): 26 small agent tasks with fixtures and automatic
   checks (answers after reading, edits that must keep a file valid, failures hidden in a pipe, scope, honesty, Greek,
-  several steps), scored by `sandbox/overnight.py`.
+  several steps), scored by `sandbox/overnight.py`. The checks of tests 28 and 34 no longer fail a correct answer
+  ("I changed nothing"; a usage line or an example that shows an error on purpose).
 - `sandbox/demo/record.mjs` records the README's video: a real model in a private Studio, on one of the small projects
   in `sandbox/demo/`, with an optional rejected first edit and a steer (`--reject-first`).
 

@@ -70,19 +70,22 @@ each can be swapped or left out.
 
 ## Does the harness help?
 
-The same 14 agent tests, three times each, on one local Strata model, once with Studio's reply guards off and once
-with them on (retries of cut-off replies, recovered tool calls, script and language checks, checks after edits,
-reminders of the user's rules in long chats, a stable prompt for the cache, and the rest):
+40 agent tests (the 14 original ones and 26 small ones, in `sandbox/prompts/`), three times each, on one local Strata
+model, once with Studio's reply guards off and once with them on (retries of cut-off replies, recovered tool calls,
+script and language checks, checks after edits, reminders of the user's rules in long chats, a stable prompt for the
+cache, and the rest):
 
 | Guards | Passed | Failed | Automatic checks passed | Average run |
 | --- | --- | --- | --- | --- |
-| off | 22 of 42 | 11 | 100 of 114 (88%) | 14.4 turns, 2.0 min |
-| on | 25 of 42 | 7 | 106 of 114 (93%) | 15.7 turns, 2.2 min |
+| off | 97 of 120 | 15 | 260 of 279 (93%) | 8.8 turns, 0.9 min |
+| on | 98 of 120 | 11 | 266 of 279 (95%) | 9.7 turns, 1.1 min |
 
-The rest needed a person to judge the answer. The clearest difference was a long session: with the guards off the
-model broke a rule the user gave at the start in all three runs, with them on in none. One model and three
-repetitions is a small sample, so read it as a direction, not a score. The two runs that ended on a one-line summary
-instead of the answer led to a new guard, `answer_check`.
+The rest needed a person to judge the answer. Most failures were Chinese characters or half-Latin words in Greek
+text, so two guards were added after this run: Strata models can no longer write Chinese, Japanese, Korean or Cyrillic
+at all, and a word mixing Greek and Latin letters is repaired from a Greek lexicon. With them the 8 Greek tests went
+from 11 passed and 8 failed to 15 passed and 3 failed, with no stray character in any reply or file. Those 3 forgot a
+rule from the session's first message (a Greek docstring in every new function), which is the clearest gap left. One
+model and three repetitions is a small sample, so read it as a direction, not a score.
 
 ## Screenshots
 
