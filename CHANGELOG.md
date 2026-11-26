@@ -9,6 +9,8 @@
 - **Benchmark tests 15 to 40** (`sandbox/prompts/BENCH_TESTS.md`): 26 small agent tasks with fixtures and automatic
   checks (answers after reading, edits that must keep a file valid, failures hidden in a pipe, scope, honesty, Greek,
   several steps), scored by `sandbox/overnight.py`.
+- `sandbox/demo/record.mjs` records the README's video: a real model in a private Studio, on one of the small projects
+  in `sandbox/demo/`, with an optional rejected first edit and a steer (`--reject-first`).
 
 ## 0.1.1 (2026-11-25)
 
