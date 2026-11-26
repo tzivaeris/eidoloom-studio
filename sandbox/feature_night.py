@@ -20,7 +20,7 @@ import time
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 TALLY = os.path.join(HERE, "runs", "20261105-142217", "files")
-OFF = {"rule_reminders": False, "smart_trim": False, "delete_tool": False, "skills": False, "full_thinking": False, "no_planning_guard": False, "retry_cut_off": False, "text_tool_calls": False, "mcp": False, "plan_tool": False, "live_view": False, "script_check": False, "edit_checks": False, "stable_prompt": False, "announce_check": False, "answer_check": False, "session_cache": False, "ask_tool": False, "document_tool": False, "turn_guard": False, "user_tools": False, "tasks": False, "verify_on_finish": False, "backup_interval_h": 0}
+OFF = {"rule_reminders": False, "smart_trim": False, "delete_tool": False, "skills": False, "full_thinking": False, "no_planning_guard": False, "retry_cut_off": False, "text_tool_calls": False, "mcp": False, "plan_tool": False, "live_view": False, "script_check": False, "script_ban": False, "edit_checks": False, "stable_prompt": False, "announce_check": False, "answer_check": False, "session_cache": False, "ask_tool": False, "document_tool": False, "turn_guard": False, "user_tools": False, "tasks": False, "verify_on_finish": False, "backup_interval_h": 0}
 TRIM_LIMIT = 30000
 CONDITIONS = [
     {"name": "baseline", "features": {}, "tests": ["13", "14"]},

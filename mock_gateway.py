@@ -10,6 +10,7 @@ Special cases:
   - model name contains "nostream": streaming requests are refused with HTTP 400 (exercises the fallback)
   - model name contains "repeat": always calls list_files with the same arguments (exercises the nudge)
   - GET /_mock/requests returns a summary of every chat request received
+  - POST /_mock/bias {"refuse": true} answers a request with logit_bias by 400, like Strata's split engine
   - MOCK_CONTEXT_TOKENS in the environment: report that context size on /api/strata/status
   - MOCK_STRATA=1: Strata's own server with no Manager (MOCK_STRATA_MODEL names its model, MOCK_STRATA_LOG gets the
     engine's loading lines) (/health, /v1/status, /v1/load, /v1/unload, /slots; GET or POST
@@ -99,6 +100,7 @@ def strata_own_status():
 
 
 # A Strata engine with session files, for Studio's session cache; off until a test posts /_mock/engine.
+BIAS = {"refuse": False, "refused": 0}   # /_mock/bias {"refuse": true}: answer 400 to logit_bias, as the split engine does
 ENGINE = {"on": False, "pid": 1, "loaded": True, "saves": [], "restores": [], "files": [], "port": 0}
 CARD = {"on": False, "running": True, "busy": 0, "mode": "fixed", "pool_mib": 9216, "posts": [],
         "runtime": {"auto_start": False, "idle_timeout_minutes": 15, "startup_script": "run-test.sh"}}
@@ -513,6 +515,12 @@ class Handler(BaseHTTPRequestHandler):
             name = req.get("model", "")
             caps = ["completion"] if "llama3.2" in name else ["completion", "tools"]
             self.send_json({"capabilities": caps})
+        elif self.path == "/_mock/bias":
+            BIAS.update(req)
+            self.send_json(dict(BIAS))
+        elif self.path == "/v1/chat/completions" and BIAS["refuse"] and req.get("logit_bias"):
+            BIAS["refused"] += 1
+            self.send_json({"error": {"message": "logit_bias: not supported by the all-cards split engine", "type": "invalid_request_error"}}, 400)
         elif self.path == "/v1/chat/completions":
             if ENGINE["on"] and not ENGINE["loaded"]:      # a request loads the engine, as the Manager does
                 ENGINE.update(loaded=True, pid=ENGINE["pid"] + 1)
@@ -566,6 +574,7 @@ class Handler(BaseHTTPRequestHandler):
                         "app": self.headers.get("X-Application-Name"), "n_messages": len(messages),
                         "assistant_texts": [m.get("content") for m in messages if m.get("role") == "assistant" and isinstance(m.get("content"), str)][-3:],
                         "reasoning_effort": req.get("reasoning_effort"),
+                        "logit_bias": sorted(int(k) for k in req.get("logit_bias") or {}),
                         "all_user": "\n".join(str(m.get("content")) for m in messages if m.get("role") == "user"),
                         "full_thinking": self.headers.get("X-Studio-Full-Thinking"),
                         "no_planning_guard": self.headers.get("X-Studio-No-Planning-Guard"),

@@ -87,6 +87,8 @@ DEFAULT_CONFIG = {
     "plan_tool": True,
     "live_view": True,
     "script_check": True,
+    "script_ban": True,           # Strata models: tokens of Chinese, Japanese, Korean and Cyrillic text banned by logit_bias (script_ban_bias)
+    "strata_vocab": "",           # the Strata tokenizer's vocab.json; empty: found from the Manager's or the checkout's profiles
     "edit_checks": True,
     "stable_prompt": True,
     "session_cache": True,        # save each chat's engine state to disk (Strata session files) and restore it after a reload
@@ -7215,6 +7217,8 @@ def tool_plan(run, args):
     # The card shows steps as written, so a step with a stray script is sent back before anyone sees it: Chinese, Japanese,
     # Korean or Cyrillic characters («loweringduring朗读»), or a word mixing Greek and Latin letters («γreek-check», also
     # joined by an underscore, «έλεγχος_CLEAR»).
+    if APP.cfg.get("script_check", True):
+        steps = [repair_mixed(step) for step in steps]
     bad = plan_script_problems(steps)
     if bad:
         return False, "Plan sent back", ("Studio note: the plan was not shown, because " + "; ".join(f"step {i} has «{w}»" for i, w in bad[:5])
@@ -7290,6 +7294,10 @@ def clean_answers(questions, raw):
 def tool_ask_user(run, args):
     questions = clean_questions(args.get("questions", args if "question" in args else None))
     if APP.cfg.get("script_check", True):
+        for q in questions:
+            q["question"], q["header"] = repair_mixed(q["question"]), repair_mixed(q.get("header") or "") or q.get("header")
+            for o in q["options"]:
+                o["label"], o["description"] = repair_mixed(o["label"]), repair_mixed(o.get("description") or "") or o.get("description")
         shown = "\n".join(part for q in questions
                           for part in [q["question"], q.get("header") or ""] + [o["label"] + " " + (o.get("description") or "") for o in q["options"]])
         bad = mixed_words(shown)
@@ -9673,6 +9681,10 @@ def call_model(run, messages):
     if run.tools_enabled:
         payload["tools"] = ([t for t in TOOL_SCHEMAS if tool_enabled(t["function"]["name"])] + [e["schema"] for e in run.mcp_tools.values()]
                             + [e["schema"] for e in run.user_tools.values()])
+    if wants_script_ban(run, messages):
+        bias = script_ban_bias()
+        if bias:
+            payload["logit_bias"] = bias
     if run.stop:
         raise Stopped()
     release_engines(run)
@@ -9682,7 +9694,18 @@ def call_model(run, messages):
     loading_done = threading.Event()
     threading.Thread(target=watch_model_load, args=(run, loading_done), daemon=True).start()
     try:
-        result = stream_completion(run, payload)
+        try:
+            result = stream_completion(run, payload)
+        except NothingUsable as exc:
+            if run.stop:
+                raise Stopped()
+            if "logit_bias" not in payload or "logit_bias" not in str(exc):
+                raise
+            # An engine without per-request biases (the split engine, older builds) answers 400: ask again without.
+            SCRIPT_BAN["refused"].add(run.model)
+            print(f"script ban: {run.model} refused logit_bias, so it is sent without: {str(exc)[:200]}", flush=True)
+            payload.pop("logit_bias")
+            result = stream_completion(run, payload)
     except NothingUsable:
         if run.stop:
             raise Stopped()
@@ -9796,6 +9819,128 @@ def mixed_words(text):
     return found
 
 
+# Repairs of words mixing Greek and Latin letters, made only when the result is a word of the Greek lexicon
+# (tools/greek_grammar.py's LEX, about 530,000 forms), so a repair never invents a word (2026-11-26, the user's request):
+#   «αρχείa» -> «αρχεία»: Latin letters that look like Greek ones;
+#   «_potάμι» -> «ποτάμι»: Greek written in Latin letters (Greeklish) inside the word;
+#   «υπάρχουνnoch» -> «υπάρχουν»: a Greek word with Latin letters stuck to it; an English word stuck to it gets a space.
+# Anything else («Σcaffolding», «γreek») is left for the send-back notes as before.
+LOOKALIKES = str.maketrans("aeiknoptuvxyABEHIKMNOPTXYZ", "αεικηορτυνχυΑΒΕΗΙΚΜΝΟΡΤΧΥΖ")
+GREEKLISH_PARTS = [("th", ["θ"]), ("ch", ["χ"]), ("ps", ["ψ"]), ("ks", ["ξ"]), ("ou", ["ου"]), ("mp", ["μπ"]), ("nt", ["ντ"]),
+                   ("a", ["α"]), ("b", ["β", "μπ"]), ("c", ["κ"]), ("d", ["δ", "ντ"]), ("e", ["ε"]), ("f", ["φ"]), ("g", ["γ"]),
+                   ("h", ["η", "χ"]), ("i", ["ι", "η", "υ"]), ("j", ["τζ"]), ("k", ["κ"]), ("l", ["λ"]), ("m", ["μ"]), ("n", ["ν"]),
+                   ("o", ["ο", "ω"]), ("p", ["π"]), ("q", ["κ"]), ("r", ["ρ"]), ("s", ["σ"]), ("t", ["τ"]), ("u", ["υ", "ου"]),
+                   ("v", ["β"]), ("w", ["ω"]), ("x", ["ξ", "χ"]), ("y", ["υ"]), ("z", ["ζ"])]
+MAX_GREEKLISH = 256
+
+
+def greek_word_known(word):
+    try:
+        lex = tools_import("greek_grammar").LEX
+        return len(word) >= 2 and lex.ready() and bool(lex.look(word))
+    except Exception:
+        return False
+
+
+def greeklish_spellings(latin):
+    """Greek spellings of a run of Latin letters, at most MAX_GREEKLISH."""
+    out = [""]
+    rest = latin.lower()
+    while rest:
+        for part, options in GREEKLISH_PARTS:
+            if rest.startswith(part):
+                out = [o + g for o in out for g in options][:MAX_GREEKLISH]
+                rest = rest[len(part):]
+                break
+        else:
+            return []
+    return out
+
+
+ACCENTED = str.maketrans("αεηιουω", "άέήίόύώ")
+
+
+def with_accents(word):
+    """The word itself and, when it has no accent, the word with an accent on each vowel in turn (Greeklish has none)."""
+    yield word
+    if re.search(r"[άέήίόύώΆΈΉΊΌΎΏΐΰ]", word):
+        return
+    for i, ch in enumerate(word):
+        if ch in "αεηιουω":
+            yield word[:i] + ch.translate(ACCENTED) + word[i + 1:]
+
+
+def final_sigma(word):
+    return word[:-1] + "ς" if word.endswith("σ") else word
+
+
+def repaired_word(word):
+    """The Greek word a mixed word meant, or None when the lexicon cannot say."""
+    tried = final_sigma(word.translate(LOOKALIKES))
+    if not LATIN_RE.search(tried) and greek_word_known(tried):
+        return tried
+    segments = re.findall(r"[A-Za-z]+|[^A-Za-z]+", word)
+    spellings = [""]
+    for seg in segments:
+        options = greeklish_spellings(seg) if LATIN_RE.match(seg) else [seg]
+        spellings = [s + o for s in spellings for o in options][:MAX_GREEKLISH]
+    for spelled in spellings:
+        spelled = final_sigma(spelled)
+        for accented in with_accents(spelled):
+            if greek_word_known(accented):
+                return accented[0].upper() + accented[1:] if word[0].isupper() else accented
+    if len(segments) == 2:
+        greek, latin = (segments[0], segments[1]) if GREEK_RE.match(segments[0]) else (segments[1], segments[0])
+        english = english_word(latin)
+        if english is not None and greek_word_known(greek):
+            if english:                # «τρέχειserver», «ναAssert»: two words without the space
+                return f"{greek} {latin}" if segments[0] == greek else f"{latin} {greek}"
+            if len(greek) >= 3:        # «υπάρχουνnoch»: a stray word of another language («λαths» is left alone)
+                return greek
+    return None
+
+
+TECH_WORDS = {"api", "json", "yaml", "toml", "html", "css", "http", "https", "url", "npm", "git", "cli", "csv", "sql", "ui", "ux", "js",
+              "ts", "py", "app", "repo", "commit", "readme", "docker", "node", "python", "regex", "pdf", "svg", "png", "ok"}
+ENGLISH_DICT = {"words": None}
+
+
+def english_word(word):
+    """True for an English word (the system's word list, Studio's own short list, technical words, or an acronym), False
+    for another word, None when there is no word list to tell."""
+    if word.lower() in ENGLISH_WORDS or word.lower() in TECH_WORDS or (len(word) > 1 and word.isupper()):
+        return True
+    if ENGLISH_DICT["words"] is None:
+        words = set()
+        for path in ("/usr/share/dict/words", "/usr/share/dict/american-english", "/usr/share/dict/british-english"):
+            try:
+                with open(path, encoding="utf-8", errors="ignore") as fh:
+                    words |= {line.strip().lower() for line in fh}
+            except OSError:
+                pass
+        ENGLISH_DICT["words"] = words
+    if not ENGLISH_DICT["words"]:
+        return None
+    return word.lower() in ENGLISH_DICT["words"]
+
+
+def repair_mixed(text):
+    """The text with every mixed word the lexicon can repair repaired, outside code spans. Words it cannot repair stay."""
+    if not isinstance(text, str) or not (APP is None or APP.cfg.get("script_check", True)):
+        return text
+    fixes = {w: r for w in mixed_words(text) for r in [repaired_word(w)] if r}
+    if not fixes:
+        return text
+    pattern = re.compile(r"(?<![^\W\d_])(" + "|".join(re.escape(w) for w in sorted(fixes, key=len, reverse=True)) + r")(?![^\W\d_])")
+    out, at = [], 0
+    for m in CODE_SPAN_RE.finditer(text):
+        out.append(pattern.sub(lambda x: fixes[x.group(1)], text[at:m.start()]))
+        out.append(m.group(0))
+        at = m.end()
+    out.append(pattern.sub(lambda x: fixes[x.group(1)], text[at:]))
+    return "".join(out)
+
+
 def mixed_note(words, where):
     shown = ", ".join(f"«{w}»" for w in words[:6]) + (f" and {len(words) - 6} more" if len(words) > 6 else "")
     return f"Studio note: {where} {shown}, mixing Greek and Latin letters in one word. Write each word in one alphabet."
@@ -9895,6 +10040,111 @@ def script_reasons(run, text):
 
 
 CODE_SPAN_RE = re.compile(r"```.*?```|`[^`\n]*`", re.S)
+
+# Scripts Strata models leak into Greek and English text: banned at the source with logit_bias, so they cannot be written
+# at all (2026-11-26, after the guards benchmark still found Chinese in a Greek reply). A token is banned when its bytes hold
+# a UTF-8 lead byte of Cyrillic (D0-D3) or of CJK, kana, Yi and Hangul (E3-ED): those bytes start nothing else, so no
+# sequence of tokens can spell such a character. Fullwidth forms, CJK compatibility and the 4-byte CJK planes are banned
+# where a token holds the whole character. Greek (CE, CF, E1 for polytonic), Latin, punctuation and emoji stay.
+SCRIPT_BAN_LEADS = frozenset(range(0xD0, 0xD4)) | frozenset(range(0xE3, 0xEE))
+SCRIPT_BAN_CHARS = re.compile(r"[\uf900-\ufaff\uff00-\uffef\U00020000-\U0003ffff]")
+SCRIPT_BAN = {"key": None, "bias": None, "found": 0.0, "files": [], "refused": set()}
+# The user asks for one of those languages, or writes about them: no ban for that chat.
+SCRIPT_LANGUAGE_RE = re.compile(r"chinese|mandarin|cantonese|japanese|korean|russian|ukrainian|bulgarian|serbian|belarus|macedonian|kazakh|"
+                                r"mongolian|cyrillic|kanji|hanzi|hiragana|katakana|hangul|κινε[ζσ]|κινέζ|ιαπων|γιαπων|κορε[αά]τικ|ρωσ[ιί]κ|ρώσικ|"
+                                r"ουκραν|βουλγ[αά]ρ|σερβικ|σέρβικ|κυριλλ", re.I)
+
+
+def gpt2_byte_decoder():
+    """GPT-2 byte-level BPE's printable character -> byte, the inverse of its byte encoder."""
+    bs = list(range(0x21, 0x7F)) + list(range(0xA1, 0xAD)) + list(range(0xAE, 0x100))
+    cs, n = bs[:], 0
+    for b in range(256):
+        if b not in bs:
+            bs.append(b)
+            cs.append(256 + n)
+            n += 1
+    return {chr(c): b for b, c in zip(bs, cs)}
+
+
+def vocab_script_bans(path):
+    """The ids of a byte-level BPE vocab.json ({token: id}) that would write a banned script, sorted."""
+    decoder, out = gpt2_byte_decoder(), []
+    for token, tid in read_json(path, {}).items():
+        try:
+            raw = bytes(decoder[c] for c in token)
+        except KeyError:
+            continue                                # not a byte-level token (a special one such as <|im_end|>)
+        if any(b in SCRIPT_BAN_LEADS for b in raw) or SCRIPT_BAN_CHARS.search(raw.decode("utf-8", "ignore")):
+            out.append(int(tid))
+    return sorted(out)
+
+
+def strata_vocab_files():
+    """The vocab.json of every Strata profile this machine runs (config strata_vocab first), looked up every 10 minutes."""
+    now = time.time()
+    if now - SCRIPT_BAN["found"] < 600:
+        return SCRIPT_BAN["files"]
+    dirs = []
+    if APP.cfg.get("strata_vocab"):
+        dirs.append(os.path.dirname(os.path.expanduser(APP.cfg["strata_vocab"])))
+    elif strata_dir():
+        dirs += [p["config"].get("tokenizer") for p in strata_profiles().values()]
+    else:
+        try:
+            dirs += [(m.get("config") or {}).get("tokenizer") for m in (strata_status() or {}).get("models") or [] if isinstance(m, dict)]
+        except Exception:
+            return SCRIPT_BAN["files"]              # the Manager does not answer now: keep what was found before
+    files = sorted({os.path.join(d, "vocab.json") for d in dirs if isinstance(d, str) and d and os.path.isfile(os.path.join(d, "vocab.json"))})
+    SCRIPT_BAN.update(found=now, files=files)
+    return files
+
+
+def script_ban_bias():
+    """{token id: -100} for the Strata models' vocabulary, or None when there is none, or when the profiles use different
+    vocabularies (Studio cannot tell which one a model name loads). Built once per vocabulary file (about a second)."""
+    files = strata_vocab_files()
+    if not files:
+        return None
+    try:
+        digests = {hashlib.sha256(open(f, "rb").read()).hexdigest() for f in files}
+    except OSError:
+        return None
+    if len(digests) != 1:
+        return None
+    key = digests.pop()
+    if SCRIPT_BAN["key"] != key:
+        ids = vocab_script_bans(files[0])
+        SCRIPT_BAN.update(key=key, bias={str(i): -100 for i in ids} if ids else None)
+        print(f"script ban: {len(ids)} tokens of Chinese, Japanese, Korean and Cyrillic text from {files[0]}", flush=True)
+    return SCRIPT_BAN["bias"]
+
+
+def message_texts(message):
+    content = message.get("content")
+    if isinstance(content, str):
+        yield content
+    elif isinstance(content, list):
+        for part in content:
+            if isinstance(part, dict) and isinstance(part.get("text"), str):
+                yield part["text"]
+    for call in message.get("tool_calls") or []:
+        yield str((call.get("function") or {}).get("arguments") or "")
+
+
+def wants_script_ban(run, messages):
+    """Ban those scripts for this request, unless the conversation already holds them (a file the model may have to quote
+    exactly to edit it) or the user names one of those languages."""
+    if not APP.cfg.get("script_ban", True) or not is_strata_model(run.model) or run.model in SCRIPT_BAN["refused"]:
+        return False
+    for message in messages:
+        for text in message_texts(message):
+            if FOREIGN_RE.search(text) or SCRIPT_BAN_CHARS.search(text):
+                return False
+            if message.get("role") == "user" and SCRIPT_LANGUAGE_RE.search(typed_part(text)):
+                return False
+    return True
+
 
 
 def drop_foreign(run, text):
@@ -10097,6 +10347,10 @@ def agent_loop(run):
         history.append({"role": "assistant", "content": result["content"], **({"tool_calls": calls} if calls else {})})
         run.longest_text = max(run.longest_text, len((result["content"] or "").strip()))
         if not calls:
+            fixed = repair_mixed(result["content"])
+            if fixed != result["content"]:      # words the lexicon can repair are repaired; only the rest is sent back
+                result["content"] = history[-1]["content"] = fixed
+                run.emit("text_fixed", text=fixed)
             why = script_problem(run, result["content"])
             if why:
                 run.emit("status", text="The reply mixed scripts or languages. Asking the model to write it again…")
@@ -10130,8 +10384,9 @@ def agent_loop(run):
                 run.emit("text_fixed", text=clean)
             save_session(run.session)
             return "answered", None
-        aside = script_aside(run, result["content"])
-        clean = drop_foreign(run, result["content"])
+        clean = repair_mixed(result["content"])
+        aside = script_aside(run, clean)
+        clean = drop_foreign(run, clean)
         if clean != result["content"]:      # the calls run anyway; the chat shows the words without the stray characters
             result["content"] = history[-1]["content"] = clean
             run.emit("text_fixed", text=clean)
@@ -10161,6 +10416,7 @@ def agent_loop(run):
                 repeated = repeated or key == last_call
                 last_call = key
                 if name == "finish":
+                    out = repair_mixed(out)
                     if run.script_noted:       # its one send-back is used: the stray characters still leave the summary
                         out = drop_foreign(run, out)
                     finished, summary = True, out

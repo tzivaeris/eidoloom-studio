@@ -4190,6 +4190,29 @@ def test_greek_grammar(c, st_port, tmp):
     rows = greek_lexicon.build(os.path.join(ROOT, "tests", "greek", "mini-kaikki.jsonl"), lex)
     check("the lexicon builds from Wiktionary's entries", rows > 1000 and os.path.exists(lex), rows)
     gg.LEX = gg.Lexicon(lex)
+    print("repairs of words mixing Greek and Latin letters (repair_mixed), on the same lexicon")
+    english = sm.ENGLISH_DICT["words"]
+    sm.ENGLISH_DICT["words"] = {"server", "check"}
+    try:
+        for mixed, meant, why in [("θάλaσσα", "θάλασσα", "a Latin letter that looks like a Greek one"),
+                                  ("thάλασσα", "θάλασσα", "Greeklish inside the word"),
+                                  ("θαlασσα", "θάλασσα", "Greeklish without the accent"),
+                                  ("Βιbλίο", "Βιβλίο", "a capital kept"),
+                                  ("υπάρχειnoch", "υπάρχει", "a stray word of another language dropped"),
+                                  ("τοserver", "το server", "an English word stuck to a Greek one gets a space"),
+                                  ("ΣεCheck", "Σε Check", "also before it")]:
+            check(f"«{mixed}» becomes «{meant}»: {why}", sm.repaired_word(mixed) == meant, sm.repaired_word(mixed))
+        for mixed, why in [("Σcaffolding", "nothing in the lexicon"), ("τοnoch", "a two-letter word with a stray one: too unsure"),
+                           ("γreek", "not a Greek word either way")]:
+            check(f"«{mixed}» is left for the send-back: {why}", sm.repaired_word(mixed) is None, sm.repaired_word(mixed))
+        text = "Η θάλaσσα είναι εδώ, το `θάλaσσα` στον κώδικα μένει, και υπάρχειnoch ένα Σcaffolding."
+        check("a reply is repaired outside code, and what cannot be repaired stays", sm.repair_mixed(text)
+              == "Η θάλασσα είναι εδώ, το `θάλaσσα` στον κώδικα μένει, και υπάρχει ένα Σcaffolding.", sm.repair_mixed(text))
+        sm.ENGLISH_DICT["words"] = set()
+        check("without an English word list, a Latin part is neither dropped nor spaced", sm.repaired_word("υπάρχειnoch") is None
+              and sm.repaired_word("τοserver") is None)
+    finally:
+        sm.ENGLISH_DICT["words"] = english
     sents = [l.rstrip("\n").split("\t") for l in open(os.path.join(ROOT, "tests", "greek", "sentences.tsv"), encoding="utf-8") if l.strip() and not l.startswith("#")]
     grammar = [r for r in sents if r[0] == "error" and r[1] != "spelling"]
     caught = [r[2] for r in grammar if gg.check(r[2])]
@@ -5695,6 +5718,9 @@ def main():
     stub_bin = os.path.join(tmp, "bin")
     os.makedirs(stub_bin)
     os.environ["STUDIO_TEST_DOCKER_LOG"] = os.path.join(tmp, "docker.log")
+    # No Greek lexicon unless a test builds its own: with this machine's, replies' mixed words would be repaired
+    # (repair_mixed) and the send-back tests would depend on where they run.
+    os.environ["GREEK_LEXICON"] = os.path.join(tmp, "no-greek-lexicon.sqlite")
     with open(os.path.join(stub_bin, "docker"), "w") as fh:
         fh.write('#!/bin/sh\necho "$*" >> "$STUDIO_TEST_DOCKER_LOG"\n'
                  'case "$1" in inspect) exit 1;; exec) echo IN-SANDBOX;; esac\nexit 0\n')
@@ -5703,7 +5729,8 @@ def main():
     with open(cfg_path, "w") as fh:
         json.dump({"host": "127.0.0.1", "port": st_port, "gateway": f"http://127.0.0.1:{gw_port}",
                    "workspace_roots": [projects], "default_model": "keystone:strata",
-                   "max_turns": 10, "command_timeout_s": 20, "user_root": os.path.join(projects, "studio-users"), "installer_catalog": "test"}, fh)
+                   "max_turns": 10, "command_timeout_s": 20, "user_root": os.path.join(projects, "studio-users"), "installer_catalog": "test",
+                   "strata_vocab": make_vocab(tmp)}, fh)
     gw = subprocess.Popen([sys.executable, os.path.join(ROOT, "mock_gateway.py"), str(gw_port)],
                           stdout=subprocess.DEVNULL)
     studio = None
@@ -5716,6 +5743,8 @@ def main():
         test_all(c, tmp, sample, outside, gw_port, cfg_path, st_port)
         if not only or "test_overnight_scoring" in only:
             test_overnight_scoring()
+        if not only or "test_script_ban" in only:
+            test_script_ban(c, projects, gw_port)
         if not only or "test_sounds" in only:
             test_sounds(tmp)
         if not only or "test_event_types" in only:
@@ -5844,6 +5873,59 @@ def sm_was_cut_off(result):
     sys.path.insert(0, ROOT)
     import studio as sm
     return sm.was_cut_off(result)
+
+
+def make_vocab(tmp):
+    """A small byte-level BPE vocab.json in the shape of Strata's tokenizer: ids 0-3 plain, 4-9 write banned scripts."""
+    sys.path.insert(0, ROOT)
+    import studio as sm
+    encode = {b: ch for ch, b in sm.gpt2_byte_decoder().items()}
+    words = ["hello", " θάλασσα", "\u03ac", " ok", " вода", "水", "の", "한", "\uff0c", "\u6c34"[:1].encode()[:2]]
+    vocab = {}
+    for i, w in enumerate(words):
+        raw = w if isinstance(w, bytes) else w.encode()
+        vocab["".join(encode[b] for b in raw)] = i
+    vocab["<|im_end|>"] = 10
+    folder = os.path.join(tmp, "tokenizer")
+    os.makedirs(folder, exist_ok=True)
+    with open(os.path.join(folder, "vocab.json"), "w") as fh:
+        json.dump(vocab, fh)
+    return os.path.join(folder, "vocab.json")
+
+
+def test_script_ban(c, projects, gw_port):
+    print("script ban (logit_bias)")
+    sys.path.insert(0, ROOT)
+    import studio as sm
+    folder = os.path.join(projects, "banned")
+    os.makedirs(folder)
+    ws = c.post("/api/workspace/open", {"path": folder})[1]["workspace"]["id"]
+
+    def sent_for(text, sid=None):
+        before = len(c_get_json(gw_port, "/_mock/requests")["requests"])
+        run_agent(c, ws, sid or c.post("/api/agent/sessions", {"ws": ws})[1]["id"], text)
+        return c_get_json(gw_port, "/_mock/requests")["requests"][before:]
+
+    sent = sent_for("hello there, γράψε κάτι για τη θάλασσα")
+    check("a Strata model is sent the ban: the tokens that write Cyrillic, CJK, kana and Hangul, and only those",
+          sent and all(r["logit_bias"] == [4, 5, 6, 7, 8, 9] for r in sent), [r["logit_bias"] for r in sent])
+    sent = sent_for("Translate hello into Japanese")
+    check("not when the user names one of those languages", sent and not any(r["logit_bias"] for r in sent))
+    sent = sent_for("hello, what does the comment # 修复 in main.py say?")
+    check("not when the conversation already holds such text, which the model may have to quote", sent and not any(r["logit_bias"] for r in sent))
+    refused = c_post_json(gw_port, "/_mock/bias", {"refuse": True})["refused"]
+    try:
+        sid = c.post("/api/agent/sessions", {"ws": ws})[1]["id"]
+        sent = sent_for("hello again", sid)
+        check("an engine that refuses logit_bias gets the request again without it, and the run goes on",
+              c_post_json(gw_port, "/_mock/bias", {})["refused"] == refused + 1 and sent and sent[0]["logit_bias"] == []
+              and c.get(f"/api/agent/session?id={sid}")[1]["events"][-1]["type"] == "done", [(r["logit_bias"]) for r in sent])
+        sent = sent_for("hello once more", sid)
+        check("that model is then asked without it", sent and not any(r["logit_bias"] for r in sent))
+    finally:
+        c_post_json(gw_port, "/_mock/bias", {"refuse": False})
+    check("the vocabulary's own reading: lead bytes of those scripts, fullwidth forms and CJK pieces",
+          sm.vocab_script_bans(make_vocab(os.path.join(projects, "..", "vocab2"))) == [4, 5, 6, 7, 8, 9])
 
 
 def test_all(c, tmp, sample, outside, gw_port, cfg_path, st_port):

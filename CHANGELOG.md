@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Strata models cannot write Chinese, Japanese, Korean or Cyrillic text** in a chat that has none and does not ask
+  for those languages (`script_ban`, on by default): each request carries `logit_bias` banning the tokens of the
+  model's vocabulary that would write them, read from the Strata profiles' `tokenizer/vocab.json` (or config
+  `strata_vocab`). An engine that refuses `logit_bias` is asked again without it.
+- **Words mixing Greek and Latin letters are repaired** («αρχείa» → «αρχεία», «υπάρχουνnoch» → «υπάρχουν»,
+  «τρέχειserver» → «τρέχει server») when the Greek lexicon says which word was meant; the rest are sent back as before.
 - **A finish that leaves the answer out is sent back once** (`answer_check`, on by default). A run that only read
   the folder and ends on a one-line summary such as "Catalogued all the routes", without writing them, is asked for
   the answer itself.
