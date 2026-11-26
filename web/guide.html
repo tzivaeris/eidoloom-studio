@@ -64,7 +64,7 @@ a { color: var(--accent); }
 <h2 id="talk">Working with the agent</h2>
 <h3>Approvals</h3>
 <ul>
-<li><b>Edits</b> show as a card with the change: <b>Accept</b>, <b>Reject</b>, or <b>Choose parts</b> to accept only some of the changed places.</li>
+<li><b>Edits</b> show as a card with the change: <b>Accept</b>, <b>Reject</b>, or <b>Choose parts</b> to accept only some of the changed places. An edit you rejected is not shown again in the same run with only comments or its place changed: the agent is told to ask you or try something else.</li>
 <li><b>Commands</b> show the exact command: <b>Run</b> or <b>Skip</b>.</li>
 <li><b>Auto-apply edits</b> and <b>Auto-run commands</b> in the top bar stop the asking. Turn them on when you trust the task.</li>
 <li>Every edit has <b>Undo</b>. Deleted files go to the trash in <code>.strata-studio/trash</code>.</li>
@@ -256,7 +256,7 @@ a { color: var(--accent); }
 <li><b>"Studio was updated":</b> press Reload to get the newest page.</li>
 <li><b>Nothing happens after sending:</b> the model may be loading (watch the bar), or someone else has the agent (see the waiting room).</li>
 <li><b>The run stopped:</b> the line at the end says why: turn limit, cut-off reply, going in circles, errors. <b>Continue</b> usually helps; for model errors, check that your model server (Ollama, llama.cpp, vLLM, LM Studio or the Ollama Manager) is running.</li>
-<li><b>The answer is in the wrong language:</b> write your message in the language you want; Studio tells the model. With Strata models, Chinese, Japanese, Korean and Cyrillic characters cannot be written at all unless you ask for one of those languages or the chat already holds them. A word mixing Greek and Latin letters («αρχείa») is repaired when the Greek word it meant is clear; other mixed replies are sent back once.</li>
+<li><b>The answer is in the wrong language:</b> write your message in the language you want; Studio tells the model. With Strata models, Chinese, Japanese, Korean, Cyrillic, Arabic, Hebrew, Indic, Thai and Vietnamese characters cannot be written at all unless you ask for one of those languages or the chat already holds them. A word mixing Greek and Latin letters («αρχείa») is repaired when the Greek word it meant is clear; other mixed replies are sent back once.</li>
 <li>Admins: the model gauges (top bar) show memory, speed and pressure, and <b>Loaded now</b> lists what holds the graphics card and RAM at this moment: the language model, ComfyUI, the voice and sound engines, Blender and anything else large, each with its VRAM and RAM.</li>
 </ul>
 </section>
@@ -276,7 +276,7 @@ a { color: var(--accent); }
 <h2 id="el-talk">Δουλεύοντας με τον βοηθό</h2>
 <h3>Εγκρίσεις</h3>
 <ul>
-<li>Οι <b>αλλαγές σε αρχεία</b> εμφανίζονται σε κάρτα με τη διαφορά: <b>Accept</b> (αποδοχή), <b>Reject</b> (απόρριψη) ή <b>Choose parts</b> για να δεχτείτε μόνο κάποια από τα σημεία που αλλάζουν.</li>
+<li>Οι <b>αλλαγές σε αρχεία</b> εμφανίζονται σε κάρτα με τη διαφορά: <b>Accept</b> (αποδοχή), <b>Reject</b> (απόρριψη) ή <b>Choose parts</b> για να δεχτείτε μόνο κάποια από τα σημεία που αλλάζουν. Μια αλλαγή που απορρίψατε δεν εμφανίζεται ξανά στην ίδια εργασία αν διαφέρει μόνο στα σχόλια ή στη θέση της: ο βοηθός καλείται να σας ρωτήσει ή να δοκιμάσει κάτι άλλο.</li>
 <li>Οι <b>εντολές</b> δείχνουν ακριβώς τι θα εκτελεστεί: <b>Run</b> ή <b>Skip</b>.</li>
 <li>Τα <b>Auto-apply edits</b> και <b>Auto-run commands</b> στην πάνω μπάρα σταματούν τις ερωτήσεις. Ενεργοποιήστε τα όταν εμπιστεύεστε την εργασία.</li>
 <li>Κάθε αλλαγή έχει <b>Undo</b>. Τα αρχεία που διαγράφονται πηγαίνουν στον κάδο, στο <code>.strata-studio/trash</code>.</li>
@@ -468,7 +468,7 @@ a { color: var(--accent); }
 <li><b>«Studio was updated»:</b> πατήστε Reload για να πάρετε την πιο πρόσφατη σελίδα.</li>
 <li><b>Δεν γίνεται τίποτα μετά την αποστολή:</b> μπορεί να φορτώνει το μοντέλο (δείτε τη μπάρα), ή να έχει κάποιος άλλος τον βοηθό (δείτε την αίθουσα αναμονής).</li>
 <li><b>Η εργασία σταμάτησε:</b> η γραμμή στο τέλος λέει γιατί (όριο γύρων, κομμένη απάντηση, κύκλοι, σφάλματα). Το <b>Continue</b> συνήθως βοηθά. Για σφάλματα του μοντέλου, ελέγξτε ότι τρέχει ο διακομιστής μοντέλων σας (Ollama, llama.cpp, vLLM, LM Studio ή το Ollama Manager).</li>
-<li><b>Η απάντηση είναι σε λάθος γλώσσα:</b> γράψτε το μήνυμά σας στη γλώσσα που θέλετε. Το Studio το λέει στο μοντέλο. Με τα μοντέλα Strata οι κινέζικοι, ιαπωνικοί, κορεατικοί και κυριλλικοί χαρακτήρες δεν μπορούν να γραφτούν καθόλου, εκτός αν ζητήσετε μία από αυτές τις γλώσσες ή αν υπάρχουν ήδη στη συζήτηση. Μια λέξη με ελληνικά και λατινικά γράμματα μαζί («αρχείa») διορθώνεται όταν είναι σαφές ποια ελληνική λέξη εννοούσε· οι υπόλοιπες ανάμεικτες απαντήσεις στέλνονται πίσω μία φορά.</li>
+<li><b>Η απάντηση είναι σε λάθος γλώσσα:</b> γράψτε το μήνυμά σας στη γλώσσα που θέλετε. Το Studio το λέει στο μοντέλο. Με τα μοντέλα Strata οι κινέζικοι, ιαπωνικοί, κορεατικοί, κυριλλικοί, αραβικοί, εβραϊκοί, ινδικοί, ταϊλανδέζικοι και βιετναμέζικοι χαρακτήρες δεν μπορούν να γραφτούν καθόλου, εκτός αν ζητήσετε μία από αυτές τις γλώσσες ή αν υπάρχουν ήδη στη συζήτηση. Μια λέξη με ελληνικά και λατινικά γράμματα μαζί («αρχείa») διορθώνεται όταν είναι σαφές ποια ελληνική λέξη εννοούσε· οι υπόλοιπες ανάμεικτες απαντήσεις στέλνονται πίσω μία φορά.</li>
 <li>Διαχειριστές: οι δείκτες του μοντέλου (πάνω μπάρα) δείχνουν μνήμη, ταχύτητα και φόρτο, και το <b>Loaded now</b> δείχνει τι πιάνει αυτή τη στιγμή την κάρτα γραφικών και τη RAM: το γλωσσικό μοντέλο, το ComfyUI, τις μηχανές φωνής και ήχων, το Blender και ό,τι άλλο μεγάλο, το καθένα με τη VRAM και τη RAM του.</li>
 </ul>
 </section>

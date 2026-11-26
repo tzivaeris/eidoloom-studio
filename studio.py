@@ -5,6 +5,7 @@ Python 3.10+, standard library only. See SPEC.md for the contract.
 Run:  python3 studio.py [--host H] [--port P] [--config FILE]
 """
 import argparse
+import ast
 import base64
 import collections
 import concurrent.futures
@@ -96,6 +97,8 @@ DEFAULT_CONFIG = {
     "session_cache_keep": 6,      # chats kept on disk (about 1.2 GB per 63K tokens each)
     "announce_check": True,       # a run that worked, then stops on "I'll do X next" with no tool call, is sent back once
     "answer_check": True,         # a run that changed nothing and ends on a one-line finish, with no answer written, is sent back once
+    "rule_checks": True,
+    "repeat_check": True,         # an edit that repeats one the user rejected in this run is not shown again; the model is told to ask or change course          # docstrings the user asked for are checked after Python edits; a run that changed files checks the user's earlier requests once before it ends
     "ask_tool": True,             # ask_user: the agent asks the user questions with choices, answered on a card
     "document_tool": True,        # write_document: the agent makes Word (.docx) and Excel (.xlsx) files
     "goal_max_rounds": 20,
@@ -6601,6 +6604,8 @@ class Run:
         self.announce_nudges = 0
         self.longest_text = 0                 # the longest reply text this run, to tell whether an answer was written
         self.answer_noted = False             # sent back once a finish that left the answer out
+        self.rules_noted = False              # asked once to check its changes against the user's earlier requests
+        self.rejected = []                    # (path, the edit's added lines) of edits the user rejected in this run
         self.only_read = True                 # every tool call so far only read the folder (list, read, search)
         self.nudged_last = False              # the last reply was sent back; a second text reply in a row ends the run
         self.approvals = {}
@@ -7013,16 +7018,50 @@ def merge_hunks(old, new, chosen):
     return "".join(out + a[at:])
 
 
+# A rejected edit sent again (2026-11-26): in all 6 benchmark runs of test 4 the model answered "The user rejected this change"
+# by sending the same constant again, with a comment added or one line lower, and never asked what the user wanted.
+REPEAT_NOTE = ("Studio did not show this change to the user: it is the same as the change to {rel} the user rejected in this run "
+               "(only comments, spacing or its place differ). Do not send it again. Ask the user what they would prefer, or make "
+               "a materially different change, or stop and say what you would need.")
+
+
+def edit_signature(old, new):
+    """The lines an edit adds, without comments, spacing or blank lines: what stays the same when only those change."""
+    added = [line[1:] for line in difflib.unified_diff((old or "").splitlines(), (new or "").splitlines(), lineterm="", n=0)
+             if line.startswith("+") and not line.startswith("+++")]
+    out = set()
+    for line in added:
+        line = re.sub(r"(^|\s)(#|//).*$", "", line)
+        line = re.sub(r"\s+", "", line)
+        if line:
+            out.add(line)
+    return frozenset(out)
+
+
+def repeats_rejected(run, rel, sig):
+    if not sig or not APP.cfg.get("repeat_check", True):
+        return False
+    for path, before in run.rejected:
+        if path == rel and before and len(sig & before) / len(sig | before) >= 0.8:
+            return True
+    return False
+
+
 def apply_edit(run, rel, path, old, new):
     """Ask for approval unless auto-apply is on, then write with a checkpoint."""
     if old == new:
         return True, "No changes", "No changes: the new content is identical to the current content."
     summary, result = f"Applied {rel}", "applied"
     if not run.auto_apply:
+        sig = edit_signature(old, new)
+        if repeats_rejected(run, rel, sig):
+            run.emit("status", text="The model sent a change you rejected again; Studio did not show it and asked it to change course.")
+            return False, f"Not shown again: {rel}", REPEAT_NOTE.format(rel=rel)
         extra = {"hunks": hunks} if (hunks := hunks_for_approval(old, new)) else {}
         run.last_parts = None
         decision, note = run.ask(kind="edit", path=rel, old=old or "", new=new, change=describe_change(old, new), **extra)
         if decision != "accept":
+            run.rejected.append((rel, sig))
             return False, f"Rejected {rel}", "The user rejected this change." + (f" Note: {note}" if note else "")
         if run.last_parts is not None and extra:
             chosen = {i for i in run.last_parts if 0 <= i < len(extra["hunks"])}
@@ -7503,7 +7542,8 @@ def tool_write_file(run, args):
     path = resolve(run.ws, rel)
     refuse_git_folder(rel_posix(path, run.ws["path"]))
     old = current_text(path)
-    return with_check_note(with_mixed_note(apply_edit(run, rel_posix(path, run.ws["path"]), path, old, content), rel, content, old), rel, path, old)
+    return with_docstring_note(run, with_check_note(with_mixed_note(apply_edit(run, rel_posix(path, run.ws["path"]), path, old, content), rel, content, old), rel, path, old),
+                               rel, path, old)
 
 
 # Quick checks after an edit (config `edit_checks`): only parsers, never the project's own code, so a typo shows in the
@@ -7617,6 +7657,97 @@ def with_check_note(result, rel, path, old):
     return ok, summary, text + f"\nStudio checked {rel}: it no longer parses{where}: {msg}. Fix this before going on."
 
 
+# Rules the user gave earlier in the chat, checked by Studio where it can (config `rule_checks`, 2026-11-26): the long Greek
+# session of the benchmark (test 14) asked in its first message for a Greek docstring in every new function, and 3 of 3
+# runs left 15 to 18 of about 20 without one, nearly all of them test functions.
+DOCSTRING_RE = re.compile(r"docstrings?|τεκμηρίωσ", re.I)
+EVERY_RE = re.compile(r"\b(every|each|all|always|must|should)\b|κάθε|όλ[εοα]ς?|πάντα|πρέπει|έχει|να έχ", re.I)
+GREEK_ASKED_RE = re.compile(r"\bgreek\b|ελληνικ", re.I)
+
+
+def user_requests(run):
+    """The user's own words in this chat, oldest first: typed text without attachments, Studio's notes left out."""
+    out = []
+    for m in run.session["messages"]:
+        if m.get("role") == "user" and isinstance(m.get("content"), str) and not m["content"].startswith(STUDIO_WORDS + LOOP_NOTES):
+            typed = typed_part(m["content"]).strip()
+            if typed:
+                out.append(typed)
+    return out
+
+
+def docstring_rule(run):
+    """(the user's words, Greek wanted) when a message in this chat asks for docstrings on every function, else None."""
+    for typed in user_requests(run):
+        for clause in re.split(r"(?<=[.;!?\n])\s+|,\s*(?=\(?[α-ωa-z]\))|\s(?=\([α-ωa-z]\)\s)", typed):
+            if DOCSTRING_RE.search(clause) and EVERY_RE.search(clause):
+                return clause.strip()[:300], bool(GREEK_ASKED_RE.search(clause))
+    return None
+
+
+def python_functions(text):
+    """{qualified name: docstring or None} of the functions and methods in Python source, or None if it does not parse."""
+    try:
+        tree = ast.parse(text or "")
+    except (SyntaxError, ValueError):
+        return None
+    out = {}
+
+    def walk(node, prefix):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                name = prefix + child.name
+                if not isinstance(child, ast.ClassDef):
+                    out[name] = ast.get_docstring(child)
+                walk(child, name + ".")
+    walk(tree, "")
+    return out
+
+
+def with_docstring_note(run, result, rel, path, old):
+    """An applied edit of a Python file, naming the new functions that lack the docstring the user asked for (in Greek, when
+    asked so). Functions the file already had are left alone."""
+    ok, summary, text = result
+    if not ok or not APP.cfg.get("rule_checks", True) or summary == "No changes" or not rel.endswith((".py", ".pyw")):
+        return result
+    rule = docstring_rule(run)
+    if not rule:
+        return result
+    new = python_functions(current_text(path))
+    if new is None:
+        return result
+    before = python_functions(old or "") or {}
+    words, greek = rule
+    missing = [name for name, doc in new.items() if name not in before
+               and (not doc or not doc.strip() or (greek and not GREEK_RE.search(doc)))]
+    if not missing:
+        return result
+    shown = ", ".join(missing[:12]) + (f" and {len(missing) - 12} more" if len(missing) > 12 else "")
+    kind = "a docstring in Greek" if greek else "a docstring"
+    return ok, summary, text + (f"\nStudio checked {rel} against the user's rule «{words}»: {len(missing)} new function"
+                                f"{'s' if len(missing) > 1 else ''} without {kind} ({shown}), test functions included. Add them now.")
+
+
+RULES_NOTE = ("Studio note: before you end, check what you changed in this run against every request the user made in this chat "
+              "(listed below, oldest first; a later request may change an earlier one). Rules about order, format, language, "
+              "docstrings and tests count too. Fix anything that no longer holds and run the tests again if you changed code; "
+              "then end as before, with your summary. The user's requests:\n{requests}")
+
+
+def rules_unchecked(run):
+    """True once per run that changed files in a chat with earlier requests: the benchmark's long sessions broke a rule
+    from the first message ("list sorts high first, then by id", test 13) while reminders were on."""
+    if not APP.cfg.get("rule_checks", True) or run.rules_noted or not run.changed or run.plan_mode or not run.tools_enabled:
+        return False
+    return len(user_requests(run)) >= 2
+
+
+def rules_note(run):
+    asked = user_requests(run)
+    shown = asked if len(asked) <= 10 else asked[:3] + asked[-7:]
+    return RULES_NOTE.format(requests="\n".join(f"{i}. " + (t[:600] + ("…" if len(t) > 600 else "")) for i, t in enumerate(shown, 1)))
+
+
 def with_mixed_note(result, rel, new, old):
     """An applied edit's result, naming words it brought in that mix Greek and Latin letters (the edit stays as it is)."""
     ok, summary, text = result
@@ -7641,8 +7772,8 @@ def tool_replace_in_file(run, args):
         raise ApiError(400, "old_text was not found (0 matches); read the file and copy the text exactly")
     if count > 1:
         raise ApiError(400, f"old_text matches {count} times; include more surrounding context to make it unique")
-    return with_check_note(with_mixed_note(apply_edit(run, rel_posix(path, run.ws["path"]), path, text, text.replace(old_text, new_text, 1)),
-                                           rel, new_text, old_text), rel, path, text)
+    return with_docstring_note(run, with_check_note(with_mixed_note(apply_edit(run, rel_posix(path, run.ws["path"]), path, text, text.replace(old_text, new_text, 1)),
+                                                                    rel, new_text, old_text), rel, path, text), rel, path, text)
 
 
 WRITING_COMMAND_RE = re.compile(r">|\b(sed\s+-i|tee|mv|cp|rm|mkdir|touch|patch|git\s+apply|npm\s+(install|i)\b|pip\s+install)")
@@ -9806,7 +9937,7 @@ GREEKLISH_WORDS = {"kai", "einai", "den", "gia", "apo", "tin", "tis", "tou", "to
                    "otan", "alla", "oti", "pou", "mia", "enas", "ena", "afto", "auto", "ola", "mono", "meta", "tha", "na", "mas", "sas",
                    "pros", "xoris", "xwris", "epeidi", "kathe", "poli", "ligo", "edw", "edo", "ekei", "ayto", "einai", "exei", "exoun",
                    "kanei", "prepei", "mporei", "boreite", "mporeite", "douleuei", "douleui", "lexi", "lexis", "selida", "arxeio"}
-FOREIGN_RE = re.compile(r"[\u0400-\u04ff\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")
+FOREIGN_RE = re.compile(r"[\u0400-\u04ff\u0530-\u0fff\u1000-\u1cff\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")   # with Armenian to Tibetan and Myanmar to Mongolian since 2026-11-26
 
 
 def mixed_words(text):
@@ -10023,6 +10154,74 @@ def script_aside(run, text):
     return SCRIPT_ASIDE.format(why=why)
 
 
+# Words of other Latin-script languages inside Greek text (2026-11-26, the benchmark's review of test 6: «οι οποίες **Semua**
+# περνούν», «που**All** περνούν», «που_ALLs πέρασαν», «rồi»). A Latin word counts when it is glued to a Greek one by
+# markdown or an underscore, or when it is not English (the system's word list), not an acronym and not a word the user
+# or the project used in this chat. Without a word list only glued ones count.
+LATINISH = "A-Za-z\u00c0-\u024f\u1e00-\u1eff"
+GLUED_RE = re.compile(rf"(?<=[\u0370-\u03ff\u1f00-\u1fff])[*_~]+([{LATINISH}]+)[*_~]*|[*_~]*([{LATINISH}]+)[*_~]+(?=[\u0370-\u03ff\u1f00-\u1fff])")
+LATIN_WORD_RE = re.compile(rf"(?<![\w*_~`/.-])[*_~]*([{LATINISH}]{{3,}})[*_~]*(?![\w`/.(-])")
+
+
+def chat_words(run):
+    """Lower-case words of everything in the chat but the model's own replies: what the user and the project said."""
+    words = set()
+    for m in run.session["messages"]:
+        if m.get("role") != "assistant":
+            for t in message_texts(m):
+                words.update(w.lower() for w in re.findall(rf"[{LATINISH}]+", t))
+    return words
+
+
+def stray_latin(run, text):
+    """[(the text to remove, the word)] for Latin-script words that do not belong in this Greek text."""
+    if not isinstance(text, str) or len(GREEK_RE.findall(text)) < 40:
+        return []
+    language = asked_language(run.session["messages"], (run.session.get("goal") or {}).get("text")) or user_language(run.session["messages"])
+    if language != "Greek":
+        return []
+    out, seen, known = [], set(), None
+    prose = CODE_SPAN_RE.sub(" ", text)
+    for m in GLUED_RE.finditer(prose):
+        word = m.group(1) or m.group(2)
+        if (m.group(0), word) not in seen:
+            seen.add((m.group(0), word))
+            out.append((m.group(0), word))
+    for m in LATIN_WORD_RE.finditer(NOT_PROSE_RE.sub(" ", prose)):
+        word = m.group(1)
+        if any(word == w for _, w in out) or word.isupper() or not re.search(r"[a-z\u00c0-\u024f\u1e00-\u1eff]", word):
+            continue
+        # a plain lower-case word may be a tool or library name (unittest, pytest): only one with another language's
+        # letters («rồi») or set off by markdown («**Semua**») counts
+        if not (re.search(r"[\u00c0-\u024f\u1e00-\u1eff]", word) or m.group(0) != word):
+            continue
+        if english_word(word) is not False:
+            continue
+        known = chat_words(run) if known is None else known
+        if word.lower() in known:
+            continue
+        out.append((m.group(0), word))
+    return out
+
+
+def drop_stray_latin(run, text):
+    """The text without the stray words, outside code spans, keeping the spacing tidy."""
+    found = stray_latin(run, text)
+    if not found:
+        return text
+    out, at = [], 0
+    pieces = sorted({piece for piece, _ in found}, key=len, reverse=True)
+    pattern = re.compile("|".join(re.escape(p) for p in pieces))
+    for m in CODE_SPAN_RE.finditer(text):
+        out.append(pattern.sub("", text[at:m.start()]))
+        out.append(m.group(0))
+        at = m.end()
+    out.append(pattern.sub("", text[at:]))
+    clean = re.sub(r"[ \t]{2,}", " ", "".join(out))
+    clean = re.sub(r" ([,.;:!?·])", r"\1", clean)
+    return re.sub(r"([,;:·])(?:\s*[,;:·])+", r"\1", clean)
+
+
 def script_reasons(run, text):
     language = asked_language(run.session["messages"], (run.session.get("goal") or {}).get("text")) or user_language(run.session["messages"])
     prose = re.findall(r"[^\W\d_]+", NOT_PROSE_RE.sub(" ", text or ""))
@@ -10033,6 +10232,9 @@ def script_reasons(run, text):
     reasons = [mixed_scripts(text, greek_chat=language != "English")] if (language == "Greek" or greek >= 10) else []
     if language == "English" and greek >= 15 and greek > len(prose) / 2:
         reasons.append("it is in Greek, but the user writes English")
+    stray = [w for _, w in stray_latin(run, text)] if language == "Greek" else []
+    if stray:
+        reasons.append(f"{len(stray)} word{'s' if len(stray) > 1 else ''} from other languages ({', '.join(dict.fromkeys(stray[:5]))})")
     why = "; ".join(r for r in reasons if r)
     if why:
         why += f". Write it in {language or 'the language the user asked for'}"
@@ -10046,13 +10248,23 @@ CODE_SPAN_RE = re.compile(r"```.*?```|`[^`\n]*`", re.S)
 # a UTF-8 lead byte of Cyrillic (D0-D3) or of CJK, kana, Yi and Hangul (E3-ED): those bytes start nothing else, so no
 # sequence of tokens can spell such a character. Fullwidth forms, CJK compatibility and the 4-byte CJK planes are banned
 # where a token holds the whole character. Greek (CE, CF, E1 for polytonic), Latin, punctuation and emoji stay.
-SCRIPT_BAN_LEADS = frozenset(range(0xD0, 0xD4)) | frozenset(range(0xE3, 0xEE))
-SCRIPT_BAN_CHARS = re.compile(r"[\uf900-\ufaff\uff00-\uffef\U00020000-\U0003ffff]")
+# Since the same day's review of the benchmark («rồi», Vietnamese, in a Greek summary) also the scripts of U+0500-U+0FFF
+# (Armenian, Hebrew, Arabic, Syriac, Thaana, the Indic scripts, Thai, Lao, Tibetan: lead bytes D4-DF and E0), and as whole
+# characters U+1000-U+1CFF (Myanmar, Georgian, Hangul jamo, Ethiopic, Khmer, Mongolian…) and Vietnamese U+1EA0-U+1EFF;
+# E1 itself stays, since Greek with accents (U+1F00-U+1FFF) starts with it.
+SCRIPT_BAN_LEADS = frozenset(range(0xD0, 0xE1)) | frozenset(range(0xE3, 0xEE))
+# Also the invisible zero-width space, non-joiner, direction marks and embeddings, word joiner and byte-order mark: kept from Vietnamese, Keystone wrote
+# "n" and then hundreds of zero-width non-joiners (the joiner U+200D stays, for emoji).
+SCRIPT_BAN_CHARS = re.compile(r"[\u200b\u200c\u200e\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff\u1000-\u1cff\u1ea0-\u1eff\uf900-\ufaff\uff00-\uffef\U00020000-\U0003ffff]")
+# Text in those scripts in the conversation (a file the model may have to quote) turns the ban off for that request.
+BANNED_TEXT_RE = re.compile(r"[\u0400-\u0fff\u1000-\u1cff\u1ea0-\u1eff\u3000-\u9fff\ua000-\ud7ff\uf900-\ufaff\uff00-\uffef\U00020000-\U0003ffff]")
 SCRIPT_BAN = {"key": None, "bias": None, "found": 0.0, "files": [], "refused": set()}
 # The user asks for one of those languages, or writes about them: no ban for that chat.
 SCRIPT_LANGUAGE_RE = re.compile(r"chinese|mandarin|cantonese|japanese|korean|russian|ukrainian|bulgarian|serbian|belarus|macedonian|kazakh|"
-                                r"mongolian|cyrillic|kanji|hanzi|hiragana|katakana|hangul|κινε[ζσ]|κινέζ|ιαπων|γιαπων|κορε[αά]τικ|ρωσ[ιί]κ|ρώσικ|"
-                                r"ουκραν|βουλγ[αά]ρ|σερβικ|σέρβικ|κυριλλ", re.I)
+                                r"mongolian|cyrillic|kanji|hanzi|hiragana|katakana|hangul|arabic|hebrew|persian|farsi|urdu|hindi|bengali|"
+                                r"tamil|telugu|punjabi|gujarati|thai\b|lao\b|vietnamese|armenian|georgian|tibetan|burmese|khmer|amharic|yiddish|"
+                                r"κινε[ζσ]|κινέζ|ιαπων|γιαπων|κορε[αά]τικ|ρωσ[ιί]κ|ρώσικ|ουκραν|βουλγ[αά]ρ|σερβικ|σέρβικ|κυριλλ|αραβικ|αράβικ|"
+                                r"εβρα[ïι]κ|εβραϊκ|περσικ|χίντι|ινδικ|ταϊλανδ|βιετναμ|αρμεν|γεωργιαν|θιβετ", re.I)
 
 
 def gpt2_byte_decoder():
@@ -10116,7 +10328,7 @@ def script_ban_bias():
     if SCRIPT_BAN["key"] != key:
         ids = vocab_script_bans(files[0])
         SCRIPT_BAN.update(key=key, bias={str(i): -100 for i in ids} if ids else None)
-        print(f"script ban: {len(ids)} tokens of Chinese, Japanese, Korean and Cyrillic text from {files[0]}", flush=True)
+        print(f"script ban: {len(ids)} tokens of Cyrillic, CJK, Hangul, Arabic, Hebrew, Indic, Thai, Vietnamese and other scripts from {files[0]}", flush=True)
     return SCRIPT_BAN["bias"]
 
 
@@ -10132,7 +10344,7 @@ def message_texts(message):
         yield str((call.get("function") or {}).get("arguments") or "")
 
 
-STUDIO_WORDS = ("Studio note", "Studio context", "You repeated")
+STUDIO_WORDS = ("Studio note", "You repeated")      # not "Studio context": that note goes in front of the user's own message
 
 
 def wants_script_ban(run, messages):
@@ -10148,7 +10360,7 @@ def wants_script_ban(run, messages):
         for text in message_texts(message):
             if message.get("role") == "user" and text.startswith(STUDIO_WORDS):
                 continue
-            if FOREIGN_RE.search(text) or SCRIPT_BAN_CHARS.search(text):
+            if BANNED_TEXT_RE.search(text):
                 return False
             if message.get("role") == "user" and SCRIPT_LANGUAGE_RE.search(typed_part(text)):
                 return False
@@ -10157,6 +10369,14 @@ def wants_script_ban(run, messages):
 
 
 def drop_foreign(run, text):
+    """See drop_foreign_chars; in a Greek chat, words of other languages go too (stray_latin)."""
+    text = drop_foreign_chars(run, text)
+    if APP.cfg["script_check"] and isinstance(text, str):
+        text = drop_stray_latin(run, text)
+    return text
+
+
+def drop_foreign_chars(run, text):
     """Text that came with tool calls, without Chinese, Japanese, Korean or Cyrillic characters, in a Greek or English
     chat («Ο用户使用: θα ξανακάνω…», Keystone, 2026-11-15). Code spans keep theirs. The model is told by script_aside
     (at most three times a run); this keeps the chat readable every time."""
@@ -10369,6 +10589,12 @@ def agent_loop(run):
                 continue
             if run.inbox:             # the user wrote while this answer was coming: answer that too
                 continue
+            if rules_unchecked(run):
+                run.rules_noted = True
+                run.emit("status", text="Asking the model to check its changes against your earlier requests…")
+                history.append({"role": "user", "content": rules_note(run)})
+                save_session(run.session)
+                continue
             if run.steered and run.tools_enabled:
                 # Steered mid-task, models often reply "Adding X now." without a call, which would end the run unfinished.
                 run.steered = False
@@ -10461,6 +10687,11 @@ def agent_loop(run):
                 run.answer_noted = True
                 run.emit("status", text="The model finished without writing its answer. Asking it for the answer…")
                 history.append({"role": "user", "content": ANSWER_NOTE.format(summary=" ".join(summary.split())[:200])})
+                finished = False
+            elif rules_unchecked(run):
+                run.rules_noted = True
+                run.emit("status", text="Asking the model to check its changes against your earlier requests…")
+                history.append({"role": "user", "content": rules_note(run)})
                 finished = False
 
         if calls:

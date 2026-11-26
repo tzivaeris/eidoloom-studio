@@ -5743,6 +5743,10 @@ def main():
         test_all(c, tmp, sample, outside, gw_port, cfg_path, st_port)
         if not only or "test_overnight_scoring" in only:
             test_overnight_scoring()
+        if not only or "test_rule_checks" in only:
+            test_rule_checks(c, projects, gw_port)
+        if not only or "test_repeat_and_stray" in only:
+            test_repeat_and_stray(c, projects, gw_port)
         if not only or "test_script_ban" in only:
             test_script_ban(c, projects, gw_port)
         if not only or "test_sounds" in only:
@@ -5880,12 +5884,12 @@ def make_vocab(tmp):
     sys.path.insert(0, ROOT)
     import studio as sm
     encode = {b: ch for ch, b in sm.gpt2_byte_decoder().items()}
-    words = ["hello", " θάλασσα", "\u03ac", " ok", " вода", "水", "の", "한", "\uff0c", "\u6c34"[:1].encode()[:2]]
+    words = ["hello", " θάλασσα", "\u03ac", " ok", " вода", "水", "の", "한", "\uff0c", "\u6c34"[:1].encode()[:2], " ماء", "ồ", " café", " ἀρχή"]
     vocab = {}
     for i, w in enumerate(words):
         raw = w if isinstance(w, bytes) else w.encode()
         vocab["".join(encode[b] for b in raw)] = i
-    vocab["<|im_end|>"] = 10
+    vocab["<|im_end|>"] = 14
     folder = os.path.join(tmp, "tokenizer")
     os.makedirs(folder, exist_ok=True)
     with open(os.path.join(folder, "vocab.json"), "w") as fh:
@@ -5907,8 +5911,8 @@ def test_script_ban(c, projects, gw_port):
         return c_get_json(gw_port, "/_mock/requests")["requests"][before:]
 
     sent = sent_for("hello there, γράψε κάτι για τη θάλασσα")
-    check("a Strata model is sent the ban: the tokens that write Cyrillic, CJK, kana and Hangul, and only those",
-          sent and all(r["logit_bias"] == [4, 5, 6, 7, 8, 9] for r in sent), [r["logit_bias"] for r in sent])
+    check("a Strata model is sent the ban: the tokens that write Cyrillic, CJK, kana, Hangul, Arabic and Vietnamese, and only those",
+          sent and all(r["logit_bias"] == [4, 5, 6, 7, 8, 9, 10, 11] for r in sent), [r["logit_bias"] for r in sent])
     sent = sent_for("Translate hello into Japanese")
     check("not when the user names one of those languages", sent and not any(r["logit_bias"] for r in sent))
     sent = sent_for("hello, what does the comment # 修复 in main.py say?")
@@ -5934,8 +5938,108 @@ def test_script_ban(c, projects, gw_port):
         check("that model is then asked without it", sent and not any(r["logit_bias"] for r in sent))
     finally:
         c_post_json(gw_port, "/_mock/bias", {"refuse": False})
-    check("the vocabulary's own reading: lead bytes of those scripts, fullwidth forms and CJK pieces",
-          sm.vocab_script_bans(make_vocab(os.path.join(projects, "..", "vocab2"))) == [4, 5, 6, 7, 8, 9])
+    check("the vocabulary's own reading: lead bytes of those scripts (Arabic too), fullwidth forms, CJK pieces and Vietnamese; "
+          "accented Latin and polytonic Greek stay", sm.vocab_script_bans(make_vocab(os.path.join(projects, "..", "vocab2"))) == [4, 5, 6, 7, 8, 9, 10, 11])
+
+
+def test_rule_checks(c, projects, gw_port):
+    print("rule checks: docstrings the user asked for, and earlier requests before a run ends")
+    sys.path.insert(0, ROOT)
+    import studio as sm
+    saved, sm.APP = sm.APP, types.SimpleNamespace(cfg={})
+    folder = os.path.join(projects, "..", "rule-unit")
+    os.makedirs(folder, exist_ok=True)
+    try:
+        say = lambda *texts: types.SimpleNamespace(session={"messages": [{"role": "user", "content": t} for t in texts]})
+        greek = say("Κανόνες για όλη τη συζήτηση: (α) απαντάς πάντα στα ελληνικά, (β) κάθε νέα συνάρτηση Python έχει docstring στα ελληνικά. Διάβασε τα αρχεία.",
+                    "Πρόσθεσε την εντολή clients")
+        check("a rule from the first message is found, with its language", sm.docstring_rule(greek)
+              == ("(β) κάθε νέα συνάρτηση Python έχει docstring στα ελληνικά.", True), sm.docstring_rule(greek))
+        check("a question about a docstring is not a rule", sm.docstring_rule(say("What does this docstring mean?")) is None)
+        path = os.path.join(folder, "m.py")
+        old = 'def kept():\n    return 1\n'
+        with open(path, "w") as fh:
+            fh.write(old + 'def added():\n    """Προσθέτει."""\n\ndef plain():\n    """Adds."""\n\nclass T:\n    def test_it(self):\n        pass\n')
+        ok, summary, text = sm.with_docstring_note(greek, (True, "Saved m.py", "Saved m.py."), "m.py", path, old)
+        check("new functions without a Greek docstring are named, test methods included, old ones left alone",
+              "2 new functions without a docstring in Greek (plain, T.test_it)" in text and "kept" not in text.split("«")[-1], text)
+        english = say("every function you add must have a docstring")
+        check("in English the language is not asked", "1 new function without a docstring (T.test_it)" in
+              sm.with_docstring_note(english, (True, "Saved", "Saved."), "m.py", path, old)[2])
+        check("nothing is said without such a rule, or for a file that is not Python",
+              sm.with_docstring_note(say("add a feature"), (True, "Saved", "Saved."), "m.py", path, old)[2] == "Saved."
+              and sm.with_docstring_note(greek, (True, "Saved", "Saved."), "m.txt", path, old)[2] == "Saved.")
+    finally:
+        sm.APP = saved
+    folder = os.path.join(projects, "rules")
+    os.makedirs(folder)
+    with open(os.path.join(folder, "README.md"), "w") as fh:
+        fh.write("# Sample\n")
+    ws = c.post("/api/workspace/open", {"path": folder})[1]["workspace"]["id"]
+    sid = c.post("/api/agent/sessions", {"ws": ws})[1]["id"]
+    before = len(c_get_json(gw_port, "/_mock/requests")["requests"])
+    run_agent(c, ws, sid, "Rename Sample to Demo in the README", auto_apply=True, auto_commands=True)
+    first = c_get_json(gw_port, "/_mock/requests")["requests"][before:]
+    check("a chat's first run is not asked to check earlier requests", not any("before you end, check" in r["last_user"] for r in first))
+    with open(os.path.join(folder, "README.md"), "w") as fh:
+        fh.write("# Sample\n")
+    before = len(c_get_json(gw_port, "/_mock/requests")["requests"])
+    events = run_agent(c, ws, sid, "Do the same once more", auto_apply=True, auto_commands=True)[1]
+    sent = c_get_json(gw_port, "/_mock/requests")["requests"][before:]
+    asked = [r for r in sent if "before you end, check" in r["last_user"]]
+    check("a later run that changed files is asked once, with the user's requests listed", len(asked) == 1
+          and "1. Rename Sample to Demo in the README" in asked[0]["last_user"] and "2. Do the same once more" in asked[0]["last_user"], [r["last_user"][:80] for r in sent])
+    check("and then ends as usual", events[-1]["type"] == "done" and events[-1].get("reason") == "finished", [(e["type"], e.get("name"), str(e.get("summary") or e.get("text") or "")[:60]) for e in events if e["type"] in ("tool_call", "tool_result", "status", "done")])
+
+
+def test_repeat_and_stray(c, projects, gw_port):
+    print("a rejected edit sent again, and words of other languages in Greek text")
+    sys.path.insert(0, ROOT)
+    import studio as sm
+    folder = os.path.join(projects, "insist")
+    os.makedirs(folder)
+    with open(os.path.join(folder, "README.md"), "w") as fh:
+        fh.write("# Sample\n")
+    ws = c.post("/api/workspace/open", {"path": folder})[1]["workspace"]["id"]
+    shown = []
+
+    def reject(ev):
+        shown.append(ev.get("new"))
+        return "reject", ""
+    events = run_agent(c, ws, c.post("/api/agent/sessions", {"ws": ws})[1]["id"], "Insist on the edit", on_approval=reject)[1]
+    check("the same edit with a comment added is not shown to the user again", len(shown) == 1, len(shown))
+    done = [e for e in events if e["type"] == "tool_result" and e.get("name") == "finish"]
+    check("and the model is told to ask or change course", done and "did not show this change" in done[-1]["output"], done[-1]["output"] if done else events[-3:])
+    check("the file is unchanged", open(os.path.join(folder, "README.md")).read() == "# Sample\n")
+    saved, sm.APP = sm.APP, types.SimpleNamespace(cfg={"script_check": True})
+    try:
+        old = "import time\n\ndef parse_ts(x):\n    return x * 60\n"
+        first = sm.edit_signature(old, "import time\nMINUTE = 60\n\ndef parse_ts(x):\n    return x * 60\n")
+        run = types.SimpleNamespace(rejected=[("t.py", first)])
+        check("moved one line lower with a comment, it is the same edit", sm.repeats_rejected(
+            run, "t.py", sm.edit_signature(old, "import time\n\n# seconds in a minute\nMINUTE = 60\ndef parse_ts(x):\n    return x * 60\n")))
+        check("using the constant as well is a different one", not sm.repeats_rejected(
+            run, "t.py", sm.edit_signature(old, "import time\nMINUTE = 60\n\ndef parse_ts(x):\n    return x * MINUTE\n")))
+        say = lambda *m: types.SimpleNamespace(session={"messages": [{"role": r, "content": t} for r, t in m]})
+        run = say(("user", "Γράψε μια συνάρτηση που μετρά λέξεις σε ελληνικό κείμενο, με δοκιμές, και εξήγησέ μου τι έκανες."),
+                  ("tool", "Tallybook"))
+        english = sm.ENGLISH_DICT["words"]
+        sm.ENGLISH_DICT["words"] = {"server", "hay"}
+        text = ("Έγραψα τη συνάρτηση στο αρχείο words.py και πρόσθεσα δώδεκα δοκιμές, οι οποίες **Semua** περνούν. Οι δοκιμές "
+                "που**All** περνούν δείχνουν ότι η στίξη δεν μετράει. Τρέχει με το unittest και το **Tallybook**, rồi, όλα καλά, "
+                "και ο server δεν χρειάστηκε. Τα αποτελέσματα που_ALLs πέρασαν.")
+        try:
+            check("glued, emphasised or foreign-lettered words of other languages are found; English, tools and the project's names are not",
+                  [w for _, w in sm.stray_latin(run, text)] == ["All", "ALLs", "Semua", "rồi"], sm.stray_latin(run, text))
+            check("and can be removed tidily", sm.drop_stray_latin(run, text) == (
+                "Έγραψα τη συνάρτηση στο αρχείο words.py και πρόσθεσα δώδεκα δοκιμές, οι οποίες περνούν. Οι δοκιμές που περνούν "
+                "δείχνουν ότι η στίξη δεν μετράει. Τρέχει με το unittest και το **Tallybook**, όλα καλά, και ο server δεν χρειάστηκε. "
+                "Τα αποτελέσματα που πέρασαν."), sm.drop_stray_latin(run, text))
+            check("an English chat is left alone", sm.stray_latin(say(("user", "Write a word counter with tests and explain it")), text) == [])
+        finally:
+            sm.ENGLISH_DICT["words"] = english
+    finally:
+        sm.APP = saved
 
 
 def test_all(c, tmp, sample, outside, gw_port, cfg_path, st_port):

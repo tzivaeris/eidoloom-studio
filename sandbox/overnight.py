@@ -134,7 +134,7 @@ class Runner:
                    "user_root": os.path.join(self.root, "no-users"), "default_model": MODELS[0], "max_turns": 400, "command_timeout_s": 120,
                    "sandbox_default": True, "sandbox_network": "install", "queue_idle_s": 86400, "queue_max_s": 864000,
                    # Off so that results stay comparable with earlier nights. Measure these features on their own.
-                   "rule_reminders": False, "smart_trim": False, "delete_tool": False, "skills": False, "full_thinking": False, "no_planning_guard": False, "retry_cut_off": False, "text_tool_calls": False, "mcp": False, "plan_tool": False, "live_view": False, "script_check": False, "script_ban": False, "edit_checks": False, "stable_prompt": False, "announce_check": False, "answer_check": False, "session_cache": False, "ask_tool": False, "document_tool": False, "turn_guard": False, "user_tools": False, "tasks": False, "verify_on_finish": False, "backup_interval_h": 0, **self.features}, open(self.config, "w"))
+                   "rule_reminders": False, "smart_trim": False, "delete_tool": False, "skills": False, "full_thinking": False, "no_planning_guard": False, "retry_cut_off": False, "text_tool_calls": False, "mcp": False, "plan_tool": False, "live_view": False, "script_check": False, "script_ban": False, "edit_checks": False, "stable_prompt": False, "announce_check": False, "answer_check": False, "rule_checks": False, "repeat_check": False, "session_cache": False, "ask_tool": False, "document_tool": False, "turn_guard": False, "user_tools": False, "tasks": False, "verify_on_finish": False, "backup_interval_h": 0, **self.features}, open(self.config, "w"))
         self.server = subprocess.Popen([sys.executable, os.path.join(ROOT, "studio.py"), "--config", self.config],
                                        stdout=open(os.path.join(self.root, "studio.log"), "a"), stderr=subprocess.STDOUT,
                                        env={**os.environ, "PYTHONUNBUFFERED": "1"})
@@ -521,7 +521,11 @@ def route_claims(text):
     claims = set()
     for line in text.splitlines():
         if not re.search(r"\b4\d\d\b", line) or re.search(r"\b2\d\d\b|\bh_\w+", line):
-            claims |= {route_path(p) for p in re.findall(r"\b(?:GET|POST|PUT|PATCH|DELETE)\b[\s|`*:]*(/api/[\w/{}<>:.-]*)", line)}
+            for p in re.findall(r"\b(?:GET|POST|PUT|PATCH|DELETE)\b[\s|`*:]*(/api/[\w/{}<>:.-]*)", line):
+                # a request with a real id that fails ("PATCH /api/clients/5.csv → h_patch_client → 400") is an example, not a route
+                if re.search(r"/\d", p) and re.search(r"\b4\d\d\b", line):
+                    continue
+                claims.add(route_path(p))
     return claims
 
 

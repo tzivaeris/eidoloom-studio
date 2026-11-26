@@ -77,7 +77,7 @@ cache, and the rest):
 
 | Guards | Passed | Failed | Automatic checks passed | Average run |
 | --- | --- | --- | --- | --- |
-| off | 97 of 120 | 15 | 260 of 279 (93%) | 8.8 turns, 0.9 min |
+| off | 98 of 120 | 13 | 262 of 279 (94%) | 8.8 turns, 0.9 min |
 | on | 98 of 120 | 11 | 266 of 279 (95%) | 9.7 turns, 1.1 min |
 
 The rest needed a person to judge the answer. Most failures were Chinese characters or half-Latin words in Greek

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **A rejected edit is not shown again** in the same run when only its comments or place changed (`repeat_check`): the
+  agent is told to ask or try something else.
+- **Rules from earlier in the chat** (`rule_checks`): when the user asked for docstrings on every function, each Python
+  edit names the new functions without one (in Greek, when asked so); and a run that changed files checks the user's
+  earlier requests once before it ends.
+- The script ban also covers Arabic, Hebrew, the Indic scripts, Thai, Vietnamese and invisible zero-width and
+  direction characters. In Greek chats, words of other languages («**Semua**», «που**All**») are sent back once, then
+  removed.
 - **Strata models cannot write Chinese, Japanese, Korean or Cyrillic text** in a chat that has none and does not ask
   for those languages (`script_ban`, on by default): each request carries `logit_bias` banning the tokens of the
   model's vocabulary that would write them, read from the Strata profiles' `tokenizer/vocab.json` (or config
