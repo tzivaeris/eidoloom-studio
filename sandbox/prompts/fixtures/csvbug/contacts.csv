@@ -1,0 +1,14 @@
+id,name,email,city,note
+1,Alice Johnson,alice@example.com,London,Prefers email
+2,"Papadopoulos, Maria",maria@example.com,Athens,VIP
+3,Bob Smith,bob@example.com,Leeds,
+4,"Dimitris ""Jim"" Georgiou",jim@example.com,Thessaloniki,Called twice
+5,Carol White,carol@example.com,"Portland, OR",New customer
+6,"Nikolaidis, Eleni",eleni@example.com,Patras,"Asked for a call, not email"
+7,David Brown,david@example.com,Bristol,
+8,"Anna ""Annie"" Lee",annie@example.com,Dublin,"Likes ""quiet"" mornings"
+9,Eve Adams,eve@example.com,Glasgow,Moved in 2024
+10,"Kostas Ioannou",kostas@example.com,Volos,"Left a message:
+call back after 5pm"
+11,Frank Green,frank@example.com,,Unknown city
+12,"O'Brien, Sean",sean@example.com,Cork,Referred by Alice

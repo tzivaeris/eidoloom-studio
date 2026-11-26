@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "statsy"
+version = "0.3.0"
+description = "Small statistics helper"
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F"]
+
+[tool.setuptools]
+packages = ["stats"]

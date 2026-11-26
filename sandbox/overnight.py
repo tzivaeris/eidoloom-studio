@@ -41,11 +41,38 @@ TITLES = {"1": "Small feature", "2": "Staying in scope", "3": "False premise", "
           "13": "Long session", "14": "Long Greek session", "B": "Batchline"}
 FIXTURES = {"1": TALLY, "2": TALLY, "3": TALLY, "4": TALLY, "8": TALLY, "14": TALLY,
             "11": os.path.join(PROMPTS, "fixtures", "cart"), "12": os.path.join(PROMPTS, "fixtures", "inventory")}
-LIMITS = {"13": 3600, "14": 3600, "B": 18000}
+LIMITS = {"13": 3600, "14": 3600, "37": 2400, "B": 18000}
 DEFAULT_LIMIT = 1800
 CJK = re.compile(r"[一-鿿]")
 GREEK = re.compile(r"[Ͱ-Ͽἀ-῿]")
-SKIP = {"__pycache__", ".pytest_cache", "node_modules", ".venv"}
+BENCH_FILE = os.path.join(PROMPTS, "BENCH_TESTS.md")
+
+
+def bench_tests():
+    """Tests 15 and up, from BENCH_TESTS.md: the first paragraph of each section names its fixture, check, answer patterns,
+    and whether it is read only or Greek."""
+    found = {}
+    try:
+        text = open(BENCH_FILE, encoding="utf-8").read()
+    except OSError:
+        return found
+    for number, title, body in re.findall(r"^## (\d+)\. (.+?)\n(.*?)(?=^## |\Z)", text, re.S | re.M):
+        meta = body.strip().split("\n\n")[0]
+
+        def named(key):
+            hit = re.search(rf"{key}: `([^`]+)`", meta)
+            return hit[1] if hit else None
+        answer = re.search(r"Answer: ((?:`[^`]+`(?:, )?)+)", meta)
+        found[number] = {"title": title.strip(), "fixture": named("Fixture"), "check": named("Check"), "readonly": "Read only" in meta,
+                         "answer": re.findall(r"`([^`]+)`", answer[1]) if answer else [], "greek": bool(re.search(r"\bGreek\.", meta))}
+    return found
+
+
+BENCH = bench_tests()
+TITLES.update({k: v["title"] for k, v in BENCH.items()})
+FIXTURES.update({k: os.path.join(PROMPTS, "fixtures", v["fixture"]) for k, v in BENCH.items() if v["fixture"]})
+MIXED = re.compile(r"\b(?=\w*[Ͱ-Ͽἀ-῿])(?=\w*[A-Za-z])\w{4,}\b")
+SKIP = {"__pycache__", ".pytest_cache", "node_modules", ".venv", ".strata-studio"}
 
 
 class Runner:
@@ -377,7 +404,7 @@ def prompts_for(test):
     if test == "B":
         text = open(os.path.join(PROMPTS, "HARD_PROJECT.md"), encoding="utf-8").read()
         return [re.search(r"```text\n(.*?)\n```", text, re.S)[1]]
-    text = open(os.path.join(PROMPTS, "STRATA_TESTS.md"), encoding="utf-8").read()
+    text = open(BENCH_FILE if test in BENCH else os.path.join(PROMPTS, "STRATA_TESTS.md"), encoding="utf-8").read()
     section = re.search(rf"^## {test}\. .*?(?=^## |\Z)", text, re.S | re.M)[0]
     return re.findall(r"```text\n(.*?)\n```", section, re.S)
 
@@ -426,8 +453,13 @@ def changed_files(work, base):
     return sorted(k for k in set(a) | set(b) if a.get(k) != b.get(k))
 
 
-def run_check(name, work):
-    result = subprocess.run([sys.executable, CHECK_RUNNER, name, work], capture_output=True, text=True, timeout=300)
+def run_check(name, work, fixture=None, reply=None):
+    extra = ["--fixture", fixture] if fixture else []
+    if reply is not None:
+        path = work.rstrip("/") + "-reply.txt"
+        write_atomic(path, reply)
+        extra += ["--reply", path]
+    result = subprocess.run([sys.executable, CHECK_RUNNER, name, work, *extra], capture_output=True, text=True, timeout=300)
     lines = [line.strip() for line in result.stdout.splitlines() if "FAIL" in line or "checks passed" in line]
     return result.returncode == 0, " | ".join(lines)[-500:] or result.stderr[-300:]
 
@@ -577,6 +609,19 @@ def score(test, work, replies, reply, all_replies, events):
         add("every reply is in Greek", all_replies and all(is_greek(t) for t in all_replies if len(prose(t)) > 40), [t[:60] for t in all_replies if len(prose(t)) > 40 and not is_greek(t)][:3])
         add("no Chinese characters", not CJK.search(text))
         review = True
+    elif test in BENCH:
+        bench, base = BENCH[test], FIXTURES.get(test)
+        if bench["readonly"]:
+            changed = changed_files(work, base) if base else sorted(tree(work))
+            add("changed nothing", not changed, changed)
+        if bench["check"]:
+            add(f"{bench['check']} checks", *run_check(bench["check"], work, base, reply or text))
+        for pattern in bench["answer"]:
+            add(f"the answer says {pattern}", re.search(pattern, text, re.I), text[:200])
+        if bench["greek"]:
+            add("final reply is in Greek", is_greek(reply), reply[:150])
+            add("no Chinese characters", not CJK.search(text) and not any(CJK.search(v.decode("utf-8", "ignore")) for v in tree(work).values()))
+            add("no words mixing Greek and Latin letters", not MIXED.findall(prose(text)), MIXED.findall(prose(text))[:5])
     elif test == "B":
         for name in ("Makefile", "e2e.sh", "README.md"):
             add(f"{name} exists", os.path.exists(os.path.join(work, name)))

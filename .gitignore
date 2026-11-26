@@ -42,3 +42,6 @@ tools/helper/.cache/
 # This machine's settings; a new install copies studio.config.example.json on its first start
 /studio.config.json
 .claude/
+
+# Benchmark fixtures that are logs on purpose
+!sandbox/prompts/fixtures/**/*.log

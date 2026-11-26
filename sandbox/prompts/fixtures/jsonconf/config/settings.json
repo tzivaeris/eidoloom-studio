@@ -1,0 +1,70 @@
+{
+  "app": {
+    "name": "Galleria",
+    "version": "2.4.1",
+    "debug": false,
+    "locale": "en-GB"
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8080,
+    "workers": 4,
+    "timeouts": {
+      "read": 30,
+      "write": 30,
+      "idle": 120
+    }
+  },
+  "database": {
+    "engine": "postgresql",
+    "host": "db.internal",
+    "port": 5432,
+    "pool": {
+      "min": 2,
+      "max": 20
+    },
+    "options": [
+      "sslmode=require",
+      "connect_timeout=5"
+    ]
+  },
+  "features": {
+    "comments": true,
+    "sharing": true,
+    "beta_editor": false,
+    "export_pdf": true
+  },
+  "limits": {
+    "max_upload_mb": 10,
+    "max_items_per_page": 50,
+    "rate_per_minute": 120
+  },
+  "mail": {
+    "from": "noreply@galleria.example",
+    "smtp": {
+      "host": "smtp.internal",
+      "port": 587,
+      "tls": true
+    }
+  },
+  "logging": {
+    "level": "info",
+    "targets": [
+      "stdout",
+      "file"
+    ],
+    "file": "/var/log/galleria.log",
+    "rotate": {
+      "size_mb": 50,
+      "keep": 7
+    }
+  },
+  "themes": [
+    "light",
+    "sepia"
+  ],
+  "admins": [
+    "ana",
+    "bob"
+  ]
+}
