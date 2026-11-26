@@ -293,7 +293,12 @@ class Runner:
         events = self.transcript(session)
         json.dump(events, open(os.path.join(folder, "transcript.json"), "w", encoding="utf-8"), ensure_ascii=False)
         engine = self.engine_info()
-        final = [str(e.get("text") or "") for e in events if e.get("type") == "token"]
+        final = []          # each turn's text as the chat shows it: Studio's text_fixed replaces what was streamed
+        for e in events:
+            if e.get("type") == "token":
+                final.append(str(e.get("text") or ""))
+            elif e.get("type") == "text_fixed" and final:
+                final[-1] = str(e.get("text") or "")
         # A model can give its answer as ordinary text, as the summary it passes to finish, or both.
         summaries = [str(r.get("summary")) for r in replies if r.get("summary")]
         reply_text = "\n".join(filter(None, [final[-1] if final else "", replies[-1].get("summary") if replies else ""]))

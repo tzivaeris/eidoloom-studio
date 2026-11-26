@@ -35,6 +35,7 @@ Special cases:
   - "edit back and forth": writes notes.txt with three lines, then rewrites it with one of them, then finishes
   - "write a report": write_document report.docx from Markdown, then finishes
   - "catalogue quietly": reads, then finishes with one line and no answer; after Studio's note, finishes with the full list
+    ("after the tests" runs the tests first, "after a build" runs `make build` first)
   - "announce": works once, then only says what it will do next ("twice": says it again after Studio's note; "ask": asks a question)
 """
 import json
@@ -271,7 +272,7 @@ def plan(req):
         return "", " ", None
     if "skip commands" in user_text.lower():
         if tools_seen < 9:
-            return "", "Running.", ("run", {"command": f"echo {tools_seen}"})
+            return "", "Running.", ("run", {"command": f"make step{tools_seen}"})
         return "", "Done.", ("finish", {"summary": "Gave up on commands."})
     if "plan the rename" in user_text.lower():
         script = [("read_file", {"path": "README.md"}), ("write_file", {"path": "README.md", "content": "changed"}),
@@ -313,6 +314,10 @@ def plan(req):
         noted = any(str(m.get("content", "")).startswith("Studio note: you only read files") for m in messages[idx + 1:])
         if tools_seen == 0:
             return "", "", ("list_files", {"path": "."})
+        if tools_seen == 1 and "after the tests" in user_text.lower():
+            return "", "", ("run", {"command": "python3 -m unittest discover -s tests 2>&1 | tail -5"})
+        if tools_seen == 1 and "after a build" in user_text.lower():
+            return "", "", ("run", {"command": "make build"})
         if not noted:
             return "", "", ("finish", {"summary": "Catalogued all the files in the folder."})
         return "", "", ("finish", {"summary": "The folder holds:\n" + "\n".join(f"- file{i}.txt: notes for part {i} of the project" for i in range(12))})

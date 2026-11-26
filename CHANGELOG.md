@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- A run that read the project and also ran its tests, or a command that only looks, still counts as only reading,
+  so a finish that leaves the answer out is sent back then too. A word mixing Greek and Latin letters that cannot be
+  repaired («Τnow») is removed from text that came with tool calls.
 - **A rejected edit is not shown again** in the same run when only its comments or place changed (`repeat_check`): the
   agent is told to ask or try something else.
 - **Rules from earlier in the chat** (`rule_checks`): when the user asked for docstrings on every function, each Python

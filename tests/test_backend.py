@@ -2794,6 +2794,13 @@ def test_announce(c, projects, gw_port):
     check("a one-line finish after reading only is sent back once for the answer itself",
           len(asked) == 1 and len(finishes) == 2 and events[-1]["reason"] == "finished" and "file11.txt" in (events[-1].get("summary") or ""),
           (len(asked), len(finishes), events[-1]))
+    events = run_agent(c, ws, c.post("/api/agent/sessions", {"ws": ws})[1]["id"], "Please catalogue quietly after the tests", auto_apply=True, auto_commands=True)[1]
+    asked = [e for e in events if e["type"] == "status" and "without writing its answer" in e.get("text", "")]
+    check("running the tests on the way still counts as only reading", len(asked) == 1 and "file11.txt" in (events[-1].get("summary") or ""),
+          (len(asked), events[-1]))
+    events = run_agent(c, ws, c.post("/api/agent/sessions", {"ws": ws})[1]["id"], "Please catalogue quietly after a build", auto_apply=True, auto_commands=True)[1]
+    asked = [e for e in events if e["type"] == "status" and "without writing its answer" in e.get("text", "")]
+    check("a build is work, so its one-line finish is left alone", not asked and events[-1]["reason"] == "finished", (len(asked), events[-1]))
     done, nudges, _ = run("hello")
     check("a plain answer without any work is left alone", done["reason"] == "answered" and nudges == 0, (done, nudges))
     for text in ("Adding back covers — a darker plain panel with a text block and barcode on the opposite face of each book.",
@@ -6036,6 +6043,12 @@ def test_repeat_and_stray(c, projects, gw_port):
                 "δείχνουν ότι η στίξη δεν μετράει. Τρέχει με το unittest και το **Tallybook**, όλα καλά, και ο server δεν χρειάστηκε. "
                 "Τα αποτελέσματα που πέρασαν."), sm.drop_stray_latin(run, text))
             check("an English chat is left alone", sm.stray_latin(say(("user", "Write a word counter with tests and explain it")), text) == [])
+            check("merging or discarding output writes no file; a redirect into a file does",
+                  [sm.writes_files(x) for x in ("python3 -m unittest 2>&1 | tail -5", "grep x a 2>/dev/null", "ls > out.txt", "cat a >> b")]
+                  == [False, False, True, True])
+            check("a mixed word nothing can repair leaves text that came with tool calls",
+                  sm.drop_mixed("Οι δοκιμές περνούν. Τnow γράφω το `Τnow` README:") == "Οι δοκιμές περνούν. γράφω το `Τnow` README:",
+                  sm.drop_mixed("Οι δοκιμές περνούν. Τnow γράφω το `Τnow` README:"))
         finally:
             sm.ENGLISH_DICT["words"] = english
     finally:

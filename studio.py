@@ -7777,6 +7777,13 @@ def tool_replace_in_file(run, args):
 
 
 WRITING_COMMAND_RE = re.compile(r">|\b(sed\s+-i|tee|mv|cp|rm|mkdir|touch|patch|git\s+apply|npm\s+(install|i)\b|pip\s+install)")
+HARMLESS_REDIRECT_RE = re.compile(r"\d?>&\d|(?:[12]?>>?|&>)\s*/dev/null")      # merging or discarding output writes no file
+
+
+def writes_files(command):
+    """True for a command that may write files: a redirect into a file or a program that writes. `2>&1` and output sent
+    to /dev/null do not count, so `python -m unittest 2>&1 | tail -5` still only reads (2026-11-27)."""
+    return bool(WRITING_COMMAND_RE.search(HARMLESS_REDIRECT_RE.sub(" ", command or "")))
 
 
 # Plan mode: commands that only look at things run as usual; anything else asks the user, even with auto-run on.
@@ -7857,7 +7864,7 @@ def tool_run(run, args):
         decision, note = run.ask(kind="command", command=command)
         if decision != "accept":
             return False, "Command skipped", "The user rejected this command." + (f" Note: {note}" if note else "")
-    run.changed = run.changed or bool(WRITING_COMMAND_RE.search(command))
+    run.changed = run.changed or writes_files(command)
     result = run_online_if_allowed(run, command)
     if WAIT_COMMAND.fullmatch(command.strip()) and APP.cfg.get("turn_guard", True):
         run.waits = getattr(run, "waits", 0) + 1
@@ -8100,7 +8107,7 @@ def tool_user(run, name, args):
                                  tool=tool["name"], **({"plan": True} if run.plan_mode else {}))
         if decision != "accept":
             return False, "Command skipped", "The user did not allow this tool to run now." + (f" Note: {note}" if note else "")
-    run.changed = run.changed or bool(WRITING_COMMAND_RE.search(tool["text"]))
+    run.changed = run.changed or writes_files(tool["text"])
     return run_command(run, tool["text"], {"STUDIO_INPUT": given})
 
 
@@ -10372,8 +10379,27 @@ def drop_foreign(run, text):
     """See drop_foreign_chars; in a Greek chat, words of other languages go too (stray_latin)."""
     text = drop_foreign_chars(run, text)
     if APP.cfg["script_check"] and isinstance(text, str):
-        text = drop_stray_latin(run, text)
+        text = drop_mixed(drop_stray_latin(run, text))
     return text
+
+
+def drop_mixed(text):
+    """The text without words that still mix Greek and Latin letters once repair_mixed has tried them, outside code
+    spans: «Τnow γράφω το README:» (Keystone, test 34 on 2026-11-26) came with a tool call, so it could not be sent
+    back, and no Greek word could be made of it."""
+    found = mixed_words(text)
+    if not found:
+        return text
+    pattern = re.compile(r"(?<![^\W\d_])(?:" + "|".join(re.escape(w) for w in sorted(found, key=len, reverse=True)) + r")(?![^\W\d_])")
+    out, at = [], 0
+    for m in CODE_SPAN_RE.finditer(text):
+        out.append(pattern.sub("", text[at:m.start()]))
+        out.append(m.group(0))
+        at = m.end()
+    out.append(pattern.sub("", text[at:]))
+    clean = re.sub(r"[ \t]{2,}", " ", "".join(out))
+    clean = re.sub(r"(^|\n) +", r"\1", clean)
+    return re.sub(r" ([,.;:!?·])", r"\1", clean)
 
 
 def drop_foreign_chars(run, text):
@@ -10437,7 +10463,29 @@ ANSWER_NOTE = ("Studio note: you only read files, and your finish summary only s
                "never sees the answer itself. Call finish again with the full answer in the summary: everything the user asked "
                "for, as you would write it to them. If that one line is the whole answer, send it again as it is.")
 READING_TOOLS = {"list_files", "read_file", "search", "finish", "plan", "use_skill"}
+TEST_RUN_RE = re.compile(r"^(?:python3?\s+-m\s+(?:unittest|pytest)|pytest|npm\s+(?:run\s+)?test|go\s+test|cargo\s+test|make\s+(?:test|check))\b")
 ANSWER_SHORT = 300          # a finish summary up to this long, with no reply text this long in the run, may have left the answer out
+
+
+def only_reads(run, name, args):
+    """True for a call that only reads the folder: the reading tools, and a command that only looks (`looks_only`) or
+    runs the tests, whose output may end in a pipe (`python -m unittest discover -s tests 2>&1 | tail -5`). On 2026-11-27
+    Keystone read a project, ran its tests, then finished with "Here is the complete route inventory." and no routes,
+    and the test run had kept answer_check from asking for them."""
+    if name in READING_TOOLS:
+        return True
+    command = args.get("command") if name == "run" else None
+    if not isinstance(command, str):
+        return False
+    first = re.sub(r"\s2>&1(?=\s|\||$)", " ", command).split("|")[0].strip()
+    if TEST_RUN_RE.match(first) and not re.search(r"[;&<>`$(){}\\\n]", first):
+        test = first
+    else:
+        try:
+            test = detect_test_command(run.ws["path"])
+        except (OSError, KeyError, TypeError):
+            test = None
+    return looks_only(command, test)
 
 
 def leaves_out_answer(run, summary):
@@ -10639,7 +10687,7 @@ def agent_loop(run):
                 args, parse_error = {}, str(exc)
             tc["function"]["arguments"] = json.dumps(args)
             run.emit("tool_call", id=tc["id"], name=name, args=clip_args(args))
-            run.only_read = run.only_read and name in READING_TOOLS
+            run.only_read = run.only_read and only_reads(run, name, args)
             run.current_tool = tc["id"]          # a tool's progress (MCP notifications/progress) goes to this row
             if run.stop or finished:
                 ok, summ, out = False, "Skipped", "Skipped: the run ended before this call."
