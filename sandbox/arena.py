@@ -53,7 +53,7 @@ def write_config():
            "default_model": "keystone:strata", "max_turns": 80, "command_timeout_s": 120, "sandbox_required": True,
            "sandbox_image": IMAGE, "sandbox_network": "off", "sandbox_memory": "6g",
            "user_root": os.path.join(HERE, "studio", "users"),
-           "rule_reminders": False, "smart_trim": False, "delete_tool": False, "skills": False, "full_thinking": False, "no_planning_guard": False, "retry_cut_off": False, "text_tool_calls": False, "mcp": False, "plan_tool": False, "live_view": False, "script_check": False, "script_ban": False, "edit_checks": False, "stable_prompt": False, "announce_check": False, "answer_check": False, "rule_checks": False, "repeat_check": False, "session_cache": False, "ask_tool": False, "document_tool": False, "turn_guard": False, "user_tools": False, "tasks": False, "verify_on_finish": False, "backup_interval_h": 0}
+           "rule_reminders": False, "smart_trim": False, "context_fit": False, "delete_tool": False, "skills": False, "full_thinking": False, "no_planning_guard": False, "retry_cut_off": False, "text_tool_calls": False, "mcp": False, "plan_tool": False, "live_view": False, "script_check": False, "script_ban": False, "edit_checks": False, "stable_prompt": False, "announce_check": False, "answer_check": False, "rule_checks": False, "repeat_check": False, "session_cache": False, "ask_tool": False, "document_tool": False, "turn_guard": False, "user_tools": False, "tasks": False, "verify_on_finish": False, "backup_interval_h": 0}
     with open(CONFIG, "w", encoding="utf-8") as handle:
         json.dump(cfg, handle, indent=2)
 

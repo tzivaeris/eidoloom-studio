@@ -2806,10 +2806,12 @@ def test_announce(c, projects, gw_port):
     for text in ("Adding back covers — a darker plain panel with a text block and barcode on the opposite face of each book.",
                  "The base colours are hard to recover, so I'll use the original palette values and rebuild both faces.",
                  "Covers applied. The shelf is far in the current framing — checking them close-up by moving the camera.",
-                 "Let me fix the import:", "Θα διορθώσω τώρα το αρχείο."):
+                 "Let me fix the import:", "Θα διορθώσω τώρα το αρχείο.",
+                 "I have a full picture now. Plan: add a `client_balance` op in `db.py`, wire the route and handler, add tests, run them."):
         check(f"an announcement: {text[:40]}", sm.announces_work(text))
     for text in ("Should I also add back covers?", "Everything is done: the tests pass.", "All done. If you want, I'll also add back covers.",
-                 "The tree is fixed — it now sits fully outside the window.", "Done — nothing left to fix.", "## Summary\n" + "Did things. " * 80):
+                 "The tree is fixed — it now sits fully outside the window.", "Done — nothing left to fix.", "## Summary\n" + "Did things. " * 80,
+                 "Here is my plan: add the route, then the tests. If you agree, I'll start."):
         check(f"not an announcement: {text[:40]}", not sm.announces_work(text))
 
 
@@ -6046,11 +6048,42 @@ def test_repeat_and_stray(c, projects, gw_port):
             check("merging or discarding output writes no file; a redirect into a file does",
                   [sm.writes_files(x) for x in ("python3 -m unittest 2>&1 | tail -5", "grep x a 2>/dev/null", "ls > out.txt", "cat a >> b")]
                   == [False, False, True, True])
+            greek_chat = say(("user", "Πρόσθεσε μια εντολή clients στο CLI και γράψε ελληνικά docstrings σε κάθε συνάρτηση."))
+            check("an English reply in a Greek chat goes back",
+                  "in English, but the user writes Greek" in sm.script_reasons(greek_chat, "I noticed an important detail: the existing rules for "
+                                                                           "invoices already round each entry, so the totals stay consistent with the tests."))
+            check("a Greek reply with a few English terms does not", "in English" not in sm.script_reasons(
+                greek_chat, "Πρόσθεσα την εντολή clients στο CLI και έτρεξα όλες τις δοκιμές με το pytest· περνούν και οι σαράντα, μαζί με τις τρεις νέες."))
             check("a mixed word nothing can repair leaves text that came with tool calls",
                   sm.drop_mixed("Οι δοκιμές περνούν. Τnow γράφω το `Τnow` README:") == "Οι δοκιμές περνούν. γράφω το `Τnow` README:",
                   sm.drop_mixed("Οι δοκιμές περνούν. Τnow γράφω το `Τnow` README:"))
         finally:
             sm.ENGLISH_DICT["words"] = english
+        sm.APP.cfg.update(context_fit=True, smart_trim=True)
+        seen, asked = [], []
+        fake = types.SimpleNamespace(model="tiny:ctx8k", session={"ctx_ratio": 1.0}, quiet=False, emit=lambda kind, **kw: seen.append((kind, kw)))
+        reads = [m for n in range(8) for m in (
+            {"role": "assistant", "content": "", "tool_calls": [{"id": f"c{n}", "type": "function", "function": {"name": "read_file", "arguments": json.dumps({"path": f"f{n}.py"})}}]},
+            {"role": "tool", "tool_call_id": f"c{n}", "content": f"f{n}.py\n" + "x = 1\n" * 700})]
+        history = [{"role": "user", "content": "Read every file."}] + reads
+        sm.fit_context(fake, history, ctx=8192, fixed=4000)
+        check("near a small model's limit the older tool output is shortened, the newest kept",
+              history[2]["content"].startswith("[older") and history[-1]["content"].endswith("x = 1\n") and not any(k == "compacted" for k, _ in seen),
+              [m["content"][:30] for m in history if m["role"] == "tool"])
+        real_call = sm.call_model
+        sm.call_model = lambda run, messages: asked.append(messages[-1]["content"]) or {"content": "Summary: the user asked to read every file; eight were read.", "tool_calls": []}
+        real_prompt, sm.build_system_prompt = sm.build_system_prompt, (lambda run: "system")
+        try:
+            history = [{"role": "user", "content": "Read every file. " + "Μεγάλο μήνυμα. " * 1200}] + reads
+            sm.fit_context(fake, history, ctx=8192, fixed=4000)
+        finally:
+            sm.call_model, sm.build_system_prompt = real_call, real_prompt
+        check("when shortening is not enough the model summarizes and the newest step stays",
+              asked and asked[0].startswith("Studio note: the conversation is getting too long") and history[0]["content"].startswith(sm.COMPACT_INTRO)
+              and "The user's latest message" in history[0]["content"] and history[1]["role"] == "assistant" and history[-1]["role"] == "tool"
+              and any(k == "compacted" for k, _ in seen), [(m["role"], str(m.get("content"))[:40]) for m in history])
+        check("Ollama's num_ctx is read from /api/show", sm.num_ctx_of({"parameters": "stop <x>\nnum_ctx 32768\ntemperature 0.7"}) == 32768
+              and sm.num_ctx_of({}) is None)
     finally:
         sm.APP = saved
 

@@ -83,6 +83,7 @@ DEFAULT_CONFIG = {
     "rule_reminders": True,
     "rule_reminder_turns": 20,
     "smart_trim": True,
+    "context_fit": True,
     "delete_tool": True,
     "skills": True,
     "plan_tool": True,
@@ -9432,8 +9433,8 @@ def trimmed_summary(name, args, output):
     return head + "]" + ("\n" + body if body else "")
 
 
-def trim_context(messages, smart=False, limit=90000):
-    """Shorten older tool outputs once the total grows beyond the limit (keep the last 6)."""
+def trim_context(messages, smart=False, limit=90000, keep=6):
+    """Shorten older tool outputs once the total grows beyond the limit (keep the last `keep`)."""
     idx = [i for i, m in enumerate(messages) if m["role"] == "tool"]
     if sum(len(messages[i]["content"]) for i in idx) <= limit:
         return
@@ -9441,7 +9442,7 @@ def trim_context(messages, smart=False, limit=90000):
     for m in messages:
         for call in m.get("tool_calls") or []:
             calls[call.get("id")] = call.get("function") or {}
-    for i in idx[:-6]:
+    for i in (idx[:-keep] if keep else idx):
         content = messages[i]["content"]
         if content.startswith("[older output trimmed"):
             continue
@@ -9595,6 +9596,129 @@ def engine_context_tokens():
     except (OSError, ValueError, http.client.HTTPException):
         return None
     return (status.get("last_generation") or {}).get("context_tokens") or None
+
+
+# Small context windows (2026-11-26, the benchmark on qwen3.8:32k): the long sessions reached 32,700 tokens of a 32,768
+# window and the model then answered with nothing, three times in a row, ending the run. Trimming was set for Strata's
+# 256K (90,000 characters of tool output). Now, for a model whose server says how much it holds (Ollama's num_ctx),
+# Studio trims older tool output and the contents of older file writes as the prompt nears that size, and if that is
+# not enough has the model summarize the earlier part, as /compact does, and carries on from the summary.
+MODEL_CONTEXT = {}
+NUM_CTX_RE = re.compile(r"(?m)^\s*num_ctx\s+(\d+)")
+CONTEXT_TRIM_AT, CONTEXT_COMPACT_AT = 0.7, 0.85      # shares of what is left once the reply's room is set aside
+
+
+def num_ctx_of(info):
+    """The context size an Ollama model is loaded with, from /api/show: its parameters' num_ctx, or None."""
+    m = NUM_CTX_RE.search((info or {}).get("parameters") or "")
+    return int(m.group(1)) if m else None
+
+
+def model_context(model):
+    """How many tokens a model holds when its server says so (Ollama's num_ctx), cached 10 minutes. None for Strata,
+    which has its own long window and cache, and for servers that do not say."""
+    if not model or is_strata_model(model) or model.startswith("codex:"):
+        return None
+    hit = MODEL_CONTEXT.get(model)
+    if hit and time.time() - hit[0] < 600:
+        return hit[1]
+    try:
+        ctx = num_ctx_of(gateway_json("POST", "/api/show", {"model": model}, timeout=5))
+    except Exception:
+        ctx = None
+    MODEL_CONTEXT[model] = (time.time(), ctx)
+    return ctx
+
+
+def tool_list(run):
+    return ([t for t in TOOL_SCHEMAS if tool_enabled(t["function"]["name"])] + [e["schema"] for e in run.mcp_tools.values()]
+            + [e["schema"] for e in run.user_tools.values()]) if run.tools_enabled else []
+
+
+def prompt_chars(obj):
+    return len(json.dumps(obj, ensure_ascii=False))
+
+
+def trim_old_writes(messages, keep):
+    """Older write_file and replace_in_file calls keep their path but not the text they wrote: the file holds it."""
+    idx = [i for i, m in enumerate(messages) if m.get("role") == "assistant" and m.get("tool_calls")]
+    for i in (idx[:-keep] if keep else idx):
+        for call in messages[i]["tool_calls"]:
+            function = call.get("function") or {}
+            if len(function.get("arguments") or "") < 1500:
+                continue
+            try:
+                args = json.loads(function["arguments"])
+            except ValueError:
+                continue
+            if not isinstance(args, dict):
+                continue
+            for k, v in args.items():
+                if isinstance(v, str) and len(v) > 600:
+                    args[k] = f"[{len(v)} characters, trimmed to save room; the file holds them]"
+            function["arguments"] = json.dumps(args, ensure_ascii=False)
+
+
+def fit_context(run, history, ctx=None, fixed=None):
+    """Keeps the prompt within what the model holds. `fixed` is the size of the system prompt and tools in characters."""
+    if not APP.cfg.get("context_fit", True):
+        return
+    ctx = ctx or model_context(run.model)
+    if not ctx:
+        return
+    if fixed is None:
+        fixed = prompt_chars(build_system_prompt(run)) + prompt_chars(tool_list(run))
+    ratio = run.session.get("ctx_ratio") or 1.5           # tokens per 4 characters, measured after each request
+    size = lambda: (fixed + prompt_chars(history)) / 4 * ratio
+    room = ctx - min(8192, ctx // 4)                      # what is left once the reply's room is set aside
+    if size() <= room * CONTEXT_TRIM_AT:
+        return
+    before = round(size())
+    for keep in (6, 3, 1):
+        trim_context(history, APP.cfg["smart_trim"], 0, keep)
+        trim_old_writes(history, keep)
+        if size() <= room * CONTEXT_TRIM_AT:
+            break
+    if round(size()) < before:
+        run.emit("status", text=f"Shortened older tool output to stay within what {run.model} can hold ({ctx // 1024}K tokens).")
+    if size() > room * CONTEXT_COMPACT_AT:
+        compact_in_run(run, history, ctx, round(size()))
+
+
+def compact_in_run(run, history, ctx, before):
+    """Has the model summarize the chat so far and carries on from it: the latest request of the user and the newest step
+    stay word for word. Leaves the chat as it was when no usable summary comes back."""
+    run.emit("status", text=f"This chat nearly fills what {run.model} can hold ({ctx // 1024}K tokens), so it is summarizing the earlier part…")
+    quiet, run.quiet = run.quiet, True
+    try:
+        result = call_model(run, [{"role": "system", "content": build_system_prompt(run)}] + history + [{"role": "user", "content": COMPACT_REQUEST}])
+    except ModelError as exc:
+        run.emit("status", text=f"Could not summarize: {exc}")
+        return False
+    finally:
+        run.quiet = quiet
+    summary = (result.get("content") or "").strip()
+    if len(summary) < 40 or result.get("tool_calls"):
+        run.emit("status", text="The model did not write a usable summary, so the chat goes on as it was.")
+        return False
+    real = [i for i, m in enumerate(history) if m.get("role") == "user" and isinstance(m.get("content"), str)
+            and not m["content"].startswith(LOOP_NOTES)]
+    start = real[-1] if real else len(history)
+    lead = COMPACT_INTRO + summary
+    ratio = run.session.get("ctx_ratio") or 1.5
+    if prompt_chars(history[start:]) / 4 * ratio > (ctx - min(8192, ctx // 4)) * 0.4:      # too big to keep whole
+        latest = history[start]["content"] if real else ""
+        lead += "\n\nThe user's latest message, in full:\n" + latest[:8000]
+        steps = [i for i, m in enumerate(history) if m.get("role") == "assistant" and i > start]
+        start = steps[-1] if steps else len(history)
+    tail = history[start:]
+    new = [{"role": "user", "content": lead}]
+    if not tail or tail[0].get("role") != "assistant":
+        new.append({"role": "assistant", "content": "Understood. I will carry on from this summary."})
+    history[:] = new + tail
+    run.emit("compacted", before=before, after=round((prompt_chars(history)) / 4 * (run.session.get("ctx_ratio") or 1.5)),
+             summary=summary, auto=True)
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -9817,8 +9941,8 @@ def call_model(run, messages):
     if run.session.get("effort") in EFFORTS:      # the chat's own choice; otherwise the Manager's profile decides
         payload["reasoning_effort"] = run.session["effort"]
     if run.tools_enabled:
-        payload["tools"] = ([t for t in TOOL_SCHEMAS if tool_enabled(t["function"]["name"])] + [e["schema"] for e in run.mcp_tools.values()]
-                            + [e["schema"] for e in run.user_tools.values()])
+        payload["tools"] = tool_list(run)
+    sent = prompt_chars(messages) + prompt_chars(payload.get("tools") or [])
     if wants_script_ban(run, messages):
         bias = script_ban_bias()
         if bias:
@@ -9854,8 +9978,11 @@ def call_model(run, messages):
     usage = result.get("usage") or {}
     prompt = usage.get("prompt_tokens") or estimate_tokens(messages)
     completion = usage.get("completion_tokens") or estimate_tokens([result["content"], result["tool_calls"]])
+    window = model_context(run.model)
+    if usage.get("prompt_tokens") and sent and (not window or usage["prompt_tokens"] < window * 0.95):
+        run.session["ctx_ratio"] = round(min(3.0, max(0.6, usage["prompt_tokens"] * 4 / sent)), 3)
     run.emit("usage", prompt_tokens=prompt, completion_tokens=completion, turn=run.turns,
-             max_turns=APP.cfg["max_turns"], context_tokens=engine_context_tokens())
+             max_turns=APP.cfg["max_turns"], context_tokens=window or engine_context_tokens())
     return result
 
 
@@ -10239,6 +10366,9 @@ def script_reasons(run, text):
     reasons = [mixed_scripts(text, greek_chat=language != "English")] if (language == "Greek" or greek >= 10) else []
     if language == "English" and greek >= 15 and greek > len(prose) / 2:
         reasons.append("it is in Greek, but the user writes English")
+    latin = sum(1 for w in prose if LATIN_RE.search(w) and not GREEK_RE.search(w))
+    if language == "Greek" and latin >= 12 and latin > 2 * greek:      # qwen3.8, test 14 of 2026-11-26
+        reasons.append("it is in English, but the user writes Greek")
     stray = [w for _, w in stray_latin(run, text)] if language == "Greek" else []
     if stray:
         reasons.append(f"{len(stray)} word{'s' if len(stray) > 1 else ''} from other languages ({', '.join(dict.fromkeys(stray[:5]))})")
@@ -10452,6 +10582,7 @@ MAX_ANNOUNCE_NUDGES = 3
 ANNOUNCE_WORDS = re.compile(r"(?:^|[.!:\n]\s*)(?:\*\*)?(?:I'll|I will|I'm going to|I am going to|I need to|Let me|Let's|Next,? I|Now I|"
                             r"Θα |Τώρα θα|Ας |Πάμε )", re.I)
 INTENT_WORDS = re.compile(r"\b(?:I'll|I will|I'm going to|I am going to)\b", re.I)      # anywhere in a sentence
+PLAN_AHEAD = re.compile(r"(?:^|[.!:\n]\s*)\**(?:my |the |next |updated )?(?:plan|σχέδιο)\**\s*:\s*\S", re.I)    # "Plan: add …, run them." (qwen3.8)
 OFFER_WORDS = re.compile(r"\bif you\b|\bwould you\b|\bwant me\b|\bshall I\b|αν θέλετε|αν θέλεις", re.I)
 DASH_GERUND = re.compile(r"[—–]\s*([a-z]+ing)\b")
 GERUND = re.compile(r"(?:\*\*)?([A-Z][a-z]+ing)\b")
@@ -10514,6 +10645,8 @@ def announces_work(text):
     if m and m.group(1).capitalize() not in NOT_GERUNDS:
         return True
     if INTENT_WORDS.search(last) and not OFFER_WORDS.search(last):
+        return True
+    if PLAN_AHEAD.search(last) and not OFFER_WORDS.search(t):
         return True
     return bool(ANNOUNCE_WORDS.search(t[-400:])) and not OFFER_WORDS.search(last)
 
@@ -10580,6 +10713,7 @@ def agent_loop(run):
             if reminder and reminder != (run.session.get("prompt_sections") or {}).get("reminder"):
                 history.append({"role": "user", "content": "Studio note: " + reminder})
         trim_context(history, APP.cfg["smart_trim"], APP.cfg["trim_chars"])
+        fit_context(run, history)
         try:
             result = call_model(run, [{"role": "system", "content": build_system_prompt(run)}] + history)
         except Stopped:
@@ -10651,7 +10785,7 @@ def agent_loop(run):
                 history.append({"role": "user", "content": STEER_NOTE})
                 save_session(run.session)
                 continue
-            if (APP.cfg["announce_check"] and run.tools_enabled and run.worked and not run.nudged_last
+            if (APP.cfg["announce_check"] and run.tools_enabled and run.worked and not run.nudged_last and not run.plan_mode
                     and run.announce_nudges < MAX_ANNOUNCE_NUDGES and announces_work(result["content"])):
                 run.announce_nudges += 1
                 run.nudged_last = True

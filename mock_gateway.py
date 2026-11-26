@@ -528,7 +528,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/show":
             name = req.get("model", "")
             caps = ["completion"] if "llama3.2" in name else ["completion", "tools"]
-            self.send_json({"capabilities": caps})
+            ctx = re.search(r"ctx(\d+)k", name)
+            self.send_json({"capabilities": caps, **({"parameters": f"num_ctx {int(ctx.group(1)) * 1024}\ntemperature 0.7"} if ctx else {})})
         elif self.path == "/_mock/bias":
             BIAS.update(req)
             self.send_json(dict(BIAS))
