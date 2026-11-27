@@ -168,7 +168,7 @@ def sys_python():
 APT_FOR = {"docker": ["docker.io"], "node": ["nodejs", "npm"], "npx": ["nodejs", "npm"], "npm": ["npm"], "git": ["git"],
            "ffmpeg": ["ffmpeg"], "ffprobe": ["ffmpeg"], "Xvfb": ["xvfb"], "curl": ["curl"], "pdftotext": ["poppler-utils"],
            "soffice": ["libreoffice-core", "libreoffice-writer", "libreoffice-calc", "libreoffice-impress"],
-           "venv": ["python3-venv", "python3-pip"], "xz": ["xz-utils"], "fonts": ["fonts-dejavu-core"],
+           "venv": ["python3-venv", "python3-pip"], "xz": ["xz-utils"], "fonts": ["fonts-dejavu-core"], "cc": ["build-essential"],
            "blender-libs": ["libxi6", "libxkbcommon0", "libsm6", "libgl1", "libegl1", "libxrender1", "libxxf86vm1", "libxfixes3"]}
 OPTIONAL_SUDO = {"apparmor"}   # Chromium runs without its own sandbox when this is missing
 PLAYWRIGHT = "1.65.1"           # tests/browser/package.json pins the same
@@ -188,6 +188,16 @@ def blender_release():
     raise Fail("no Linux release of Blender found on download.blender.org")
 
 
+def manager_strata_dir():
+    """The Strata checkout the Ollama Manager on this machine runs, or ""."""
+    try:
+        with urllib.request.urlopen(urllib.request.Request(MANAGER + "/api/strata/status", headers=UA), timeout=3) as resp:
+            folder = json.load(resp).get("directory") or ""
+    except (OSError, ValueError, AttributeError):
+        return ""
+    return folder if folder and os.path.isfile(os.path.join(folder, "serve", "server.py")) else ""
+
+
 def codex_binary():
     """The Codex CLI on this machine, or None."""
     found = shutil.which("codex") or os.path.join(LOCAL_BIN, "codex")
@@ -205,6 +215,17 @@ def catalog(root, data_dir):
     roots = ":".join([os.path.join(HOME, "Projects"), os.path.join(HOME, "Videos")])
     projects = os.path.join(HOME, "Projects")
     return [
+        # ---- local models: a model server and the model the person chooses; Studio starts the server itself
+        {"id": "polystrata", "group": "models", "name": "PolyStrata (local models)", "local": "polystrata",
+         "what": "Runs large models on this machine's card and RAM, with 128K of context: Qwen3.6-35B, fast, or Ornith 1.5 122B, "
+                 "the strongest at following rules. Studio starts it when a chat picks one of its models.",
+         "needs": ["git", "venv", "cc"], "repo": POLYSTRATA, "choices": LOCAL_CHOICES["polystrata"],
+         "download": 23200 + 10000, "disk": 23200 + 12000},
+        {"id": "strata", "group": "models", "name": "Strata (Swift 1.5)", "local": "strata",
+         "what": "Strata's engine with Swift 1.5, the Qwen3.8-Flash-Next fine-tune Studio was built with, and 256K of context; "
+                 "it needs about 64 GB of RAM. Studio starts it when a chat picks it.",
+         "needs": ["git", "venv", "cc"], "repo": STRATA, "choices": LOCAL_CHOICES["strata"],
+         "download": 77600 + 10000, "disk": 77600 + 12000},
         # ---- services in Docker
         {"id": "searxng", "group": "services", "name": "Web search (SearXNG)", "what": "Private web search for the agent: a local SearXNG and its tool server.",
          "needs": ["docker", "npx"], "download": 400, "disk": 450, "docker": {"image": "searxng/searxng:latest", "container": "studio-searxng",
@@ -358,11 +379,34 @@ UNIT_SOURCES = {"comfyui": "sandbox/mcp-comfyui/comfyui.service", "strata-voice"
 MAKE_ROOM_ENV = {"strata-voice": "VOICE_MAKE_ROOM", "strata-sound": "SOUND_MAKE_ROOM", "strata-music": "MUSIC_MAKE_ROOM"}
 MANAGER = "http://127.0.0.1:8787"
 
+# Local models (2026-11-27, the user's request: everything from Studio, no Ollama Manager). Pinned to what this machine
+# runs; their own setup.sh builds the engine for the card and downloads the model. ram_gb/vram_gb are their setups'
+# own estimates; a choice whose profile exists is installed (the profile is strata-<family>-<size>.json).
+STRATA = ("https://github.com/Niko1221/Strata.git", "c77572806996349b49995e4f98d41b5294d36a21")
+POLYSTRATA = ("https://github.com/simplexai-labs/PolyStrata.git", "42e489d145aaf4430b54f2c58679be27d45faf17")
+LOCAL_CHOICES = {
+    "polystrata": [
+        {"id": "qwen36-ud-q4_k_m", "family": "qwen36", "model": "UD-Q4_K_M", "context": 131072, "download_gb": 22.7, "ram_gb": 10, "vram_gb": 8,
+         "label": "Qwen3.6-35B-A3B UD-Q4_K_M", "about": "fast (110-200 tokens/s on a 24 GB card), good Greek; weaker at keeping a long chat's rules"},
+        {"id": "ornith122-ud-iq3_xxs", "family": "ornith122", "model": "UD-IQ3_XXS", "context": 131072, "download_gb": 49.5, "ram_gb": 37, "vram_gb": 16,
+         "label": "Ornith 1.5 122B UD-IQ3_XXS", "about": "the strongest at following rules and the best Greek; 25-47 tokens/s"},
+    ],
+    "strata": [
+        {"id": "swift-iq3_xxs", "family": "swift", "model": "IQ3_XXS", "context": 262144, "download_gb": 75.8, "ram_gb": 60, "vram_gb": 12,
+         "label": "Swift 1.5 IQ3_XXS", "about": "3-bit, the quality Studio's tests were run with; about 60 tokens/s"},
+        {"id": "swift-iq2_xs", "family": "swift", "model": "IQ2_XS", "context": 262144, "download_gb": 68.0, "ram_gb": 48, "vram_gb": 12,
+         "label": "Swift 1.5 IQ2_XS", "about": "2-bit: less RAM, a little lower quality"},
+    ],
+}
+LOCAL_KEYS = {"strata": "strata_dir", "polystrata": "polystrata_dir"}
+LOCAL_HOMES = {"strata": "", "polystrata": "terminal"}          # where server.py, .venv and the profiles are
+LOCAL_PORT = 8097
 
-GROUPS = [("services", "Services in Docker"), ("tools", "Tools on this machine"), ("engines", "Engines on the graphics card")]
+
+GROUPS = [("models", "Local models"), ("services", "Services in Docker"), ("tools", "Tools on this machine"), ("engines", "Engines on the graphics card")]
 LATER_NOTE = "Comes in the next version of this installer (AMD graphics cards first)."
 NOT_INSTALLABLE = ["listmonk (email) is its own project: set it up from listmonk.app, then add the two listmonk tool servers in Tool servers with its API user.",
-                   "The model server (Ollama Manager and the Strata models) is its own project and is not installed here."]
+                   "Ollama and the Ollama Manager are their own projects: Studio uses them when Account & settings → Models points at one."]
 
 
 def test_catalog(root, data_dir):
@@ -486,6 +530,8 @@ class Installer:
             return any(os.path.exists(f) for f in DEJAVU), APT_FOR["fonts"]
         if need == "xz":
             return bool(shutil.which("xz")), APT_FOR["xz"]
+        if need == "cc":
+            return bool(shutil.which("g++") and shutil.which("make")), APT_FOR["cc"]
         if need == "blender-libs":
             libs = run_text(["ldconfig", "-p"])[1]
             return all(lib in libs for lib in BLENDER_LIBS), APT_FOR["blender-libs"]
@@ -510,7 +556,8 @@ class Installer:
                 words.append(f"Node.js 18 or newer (this one is {m['node_major']})")
             else:
                 words.append({"docker": "Docker", "venv": "Python's venv", "fonts": "the DejaVu fonts", "xz": "xz",
-                              "blender-libs": "the libraries Blender draws with", "rubberband": "ffmpeg with rubberband"}.get(need, need))
+                              "blender-libs": "the libraries Blender draws with", "rubberband": "ffmpeg with rubberband",
+                              "cc": "a C++ compiler (build-essential)"}.get(need, need))
             apt += [p for p in packages if p not in apt]
         if "docker.io" in apt and not m.get("in_docker_group"):
             extra.append("docker-group")
@@ -550,6 +597,11 @@ class Installer:
                 return False, "its add-on is not in Blender"
         if iid == "documents" and not (shutil.which("soffice") and shutil.which("pdftotext")):
             return False, ""
+        if item.get("local"):
+            models = self.local_models(item)
+            if not models:
+                return False, ""
+            return True, "models: " + ", ".join(sorted(set(models.values())))
         if iid == "codex":
             binary = codex_binary()
             if not binary:
@@ -571,6 +623,51 @@ class Installer:
             found.append(f"{spec['name']} {'on' if state == 'on' else 'off'}")
         return True, ("tool server " + ", ".join(found)) if found else "installed"
 
+    def local_folder(self, item):
+        """The checkout: the one Studio's config names, one the Ollama Manager runs (Strata), or Studio's own in ~/.local/opt."""
+        get = self.hooks.get("config_get")
+        named = get(LOCAL_KEYS[item["local"]]) if get else ""
+        if named and os.path.isdir(os.path.expanduser(named)):
+            return os.path.expanduser(named)
+        if item["local"] == "strata":
+            here = manager_strata_dir()
+            if here:
+                return here
+        return os.path.join(OPT, "Strata" if item["local"] == "strata" else "PolyStrata")
+
+    def local_models(self, item):
+        """{profile stem: model name} of the models installed in the item's checkout."""
+        home = os.path.join(self.local_folder(item), LOCAL_HOMES[item["local"]])
+        if not os.path.isfile(os.path.join(home, "serve", "server.py")):
+            return {}
+        out = {}
+        for f in sorted(glob.glob(os.path.join(home, "strata-*.json"))):
+            try:
+                config = json.load(open(f, encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if isinstance(config, dict) and isinstance(config.get("model_name"), str):
+                out[os.path.basename(f)[len("strata-"):-len(".json")]] = config["model_name"]
+        return out
+
+    def choices(self, item, m):
+        """The models the item can install, each with whether it fits this machine and whether it is installed."""
+        have, out = self.local_models(item), []
+        vram = max([g.get("vram_gb") or 0 for g in m.get("gpus") or []] or [0])
+        for c in item.get("choices", []):
+            why = ""
+            if not vram:
+                why = "needs a graphics card (AMD or NVIDIA)"
+            elif vram + 0.5 < c["vram_gb"]:
+                why = f"needs a card with {c['vram_gb']} GB; this one has {vram:g} GB"
+            elif m.get("ram_gb", 0) + 4 < c["ram_gb"]:
+                why = f"needs about {c['ram_gb']} GB of RAM; this machine has {m.get('ram_gb', 0):g} GB"
+            elif c["download_gb"] + 12 > m.get("disk_free_gb", 0):
+                why = f"needs {c['download_gb'] + 12:.0f} GB free on disk; {m.get('disk_free_gb', 0):g} GB are free"
+            out.append({"id": c["id"], "label": c["label"], "about": c["about"], "download_gb": c["download_gb"], "ram_gb": c["ram_gb"],
+                        "fits": not why, "why": why, "installed": any(s == c["id"] or s.startswith(c["id"] + "-") for s in have)})
+        return out
+
     def status(self, item, m):
         if item.get("later"):
             gpu = m.get("gpu")
@@ -580,6 +677,9 @@ class Installer:
         ok, detail = self.installed(item)
         if ok:
             return {"status": "installed", "why": detail, "apt": [], "extra": []}
+        if item.get("local") and not self.test and not any(c["fits"] for c in self.choices(item, m)):
+            return {"status": "no", "why": "None of its models fits this machine: " + "; ".join(c["why"] for c in self.choices(item, m)),
+                    "apt": [], "extra": []}
         if item.get("engine"):
             gpu = m.get("gpu")
             if not gpu:
@@ -658,7 +758,8 @@ class Installer:
             items.append({"id": iid, "name": item["name"], "group": item["group"], "what": item["what"], "status": st["status"], "why": st["why"],
                           "apt": st["apt"], "sudo": bool(st["apt"] or st["extra"]), "download_mb": item.get("download", 0), "disk_mb": item.get("disk", 0),
                           "after": item.get("after", []), "fits": st.get("fits"), "servers": [s["name"] for s in item.get("servers", [])],
-                          "extra": bool(item.get("extra")), "engine": bool(item.get("engine")), "gpu_gb": item.get("gpu_gb", 0)})
+                          "extra": bool(item.get("extra")), "engine": bool(item.get("engine")), "gpu_gb": item.get("gpu_gb", 0),
+                          "choices": self.choices(item, m) if item.get("choices") else None})
         return {"machine": m, "items": items, "groups": GROUPS, "job": self.job, "not_here": NOT_INSTALLABLE,
                 "history": self.state["history"][-40:][::-1]}
 
@@ -676,9 +777,13 @@ class Installer:
             add(iid)
         return [iid for iid in self.items if iid in want]
 
-    def start(self, ids):
+    def start(self, ids, options=None):
         if not isinstance(ids, list) or not ids or not all(isinstance(i, str) and i in self.items for i in ids):
             raise Fail("choose tools from the list")
+        options = options if isinstance(options, dict) else {}
+        for iid, choice in options.items():
+            if iid not in self.items or not isinstance(choice, str) or choice not in {c["id"] for c in self.items[iid].get("choices", [])}:
+                raise Fail("choose a model from the list")
         with self.lock:
             if self.job and not self.job["done"]:
                 raise Fail("an install is already running")
@@ -688,7 +793,7 @@ class Installer:
                 raise Fail("those are not installable yet")
             self.cancel = False
             self.job = {"ids": todo, "current": None, "done_ids": [], "failed": {}, "skipped": {}, "log": [], "started": time.time(),
-                        "done": False, "ok": None, "message": ""}
+                        "done": False, "ok": None, "message": "", "options": options}
         threading.Thread(target=self.run_job, daemon=True).start()
         return self.job
 
@@ -765,6 +870,97 @@ class Installer:
         return ("ready" if not added else "ready, tool server " + ", ".join(added) + " added")
 
     # ------------------------------------------------------------------ recipes
+    def install_polystrata(self, item):
+        return self.install_local(item)
+
+    def install_strata(self, item):
+        return self.install_local(item)
+
+    def install_local(self, item):
+        """Clones the server at its pinned commit, runs its own setup for the chosen model (it builds the engine for the
+        card and downloads the model), then tells Studio where it is and which port to start it on."""
+        m = self.look()
+        wanted = (self.job or {}).get("options", {}).get(item["id"])
+        choices = {c["id"]: c for c in self.choices(item, m)}
+        choice = choices.get(wanted) if wanted else next((c for c in choices.values() if c["fits"] and not c["installed"]), None)
+        if not choice:
+            raise Fail("no model of it fits this machine" if not any(c["fits"] for c in choices.values()) else "its models are all installed")
+        if choice["installed"]:
+            self.log(f"   {choice['label']} is already installed")
+            return
+        if not choice["fits"]:
+            raise Fail(f"{choice['label']} does not fit: {choice['why']}")
+        spec = next(c for c in item["choices"] if c["id"] == choice["id"])
+        folder = self.local_folder(item)
+        self.git_at(item["repo"], folder)
+        get = self.hooks.get("config_get")
+        port = int((get("local_port") if get else 0) or LOCAL_PORT)
+        argv = [os.path.join(folder, "setup.sh"), "--family", spec["family"], "--model", spec["model"], "--context", str(spec["context"]),
+                "--port", str(port), "--no-start", "--no-browser", "--yes"] + (["--setup"] if self.local_models(item) else [])
+        if item["local"] == "polystrata":
+            argv += ["--output", "jsonl"]
+        self.log(f"   {choice['label']}: its setup builds the engine for this card and downloads {spec['download_gb']:g} GB")
+        self.run_setup(argv, folder)
+        if not any(c["id"] == choice["id"] and c["installed"] for c in self.choices(item, m)):
+            raise Fail(f"its setup finished, but no profile for {choice['label']} was written")
+        set_config = self.hooks.get("set_config")
+        if set_config:              # the port first: a folder without one would make its server the gateway
+            set_config("local_port", port)
+            set_config(LOCAL_KEYS[item["local"]], folder)
+        self.log(f"   {choice['label']} installed; Studio starts it on port {port} when a chat picks it")
+
+    def run_setup(self, argv, folder):
+        """Runs Strata's or PolyStrata's setup.sh: its steps reach the log, its downloads the progress bar (from --output
+        jsonl's events, or from the plain "file: 1.2 / 22.7 GB (5%)" lines), and Stop ends it."""
+        self.log("$ " + " ".join(shlex.quote(a) for a in argv))
+        try:
+            proc = subprocess.Popen(argv, cwd=folder, env={**os.environ, "PYTHONUNBUFFERED": "1", "NO_COLOR": "1"}, stdin=subprocess.DEVNULL,
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        except OSError as e:
+            raise Fail(f"its setup could not start: {e}")
+        end, tail, buf = time.time() + 6 * 3600, [], b""
+        threading.Thread(target=self._watch, args=(proc, end), daemon=True).start()
+        progress = re.compile(r"^\s*(.+?):\s+([\d.]+)\s*/\s*([\d.]+)\s*GB")
+        while True:
+            chunk = proc.stdout.read1(65536) if hasattr(proc.stdout, "read1") else proc.stdout.read(4096)
+            if not chunk:
+                break
+            buf += chunk
+            parts = re.split(rb"[\r\n]", buf)
+            buf = parts.pop()
+            for raw in parts:
+                line = raw.decode("utf-8", "replace").strip()
+                if not line:
+                    continue
+                tail = (tail + [line])[-12:]
+                if line.startswith("{"):
+                    try:
+                        ev = json.loads(line)
+                    except ValueError:
+                        ev = None
+                    if isinstance(ev, dict):
+                        kind = ev.get("event")
+                        if kind == "progress":
+                            self.job["progress"] = {"name": ev.get("label") or "download", "done": ev.get("done_bytes") or 0, "total": ev.get("total_bytes") or 0}
+                        elif kind == "step":
+                            self.job["progress"] = None
+                            self.log(f"   · {ev.get('title', '')}")
+                        elif kind in ("ok", "warning", "error"):
+                            self.log(("   ✗ " if kind == "error" else "   ! " if kind == "warning" else "     ") + str(ev.get("message") or ev)[:300])
+                        continue
+                got = progress.match(line)
+                if got:
+                    self.job["progress"] = {"name": got.group(1), "done": float(got.group(2)) * 2 ** 30, "total": float(got.group(3)) * 2 ** 30}
+                elif line.startswith("===") or line.startswith("[ok]") or line.startswith("[!]") or "error" in line.lower():
+                    self.job["progress"] = None if line.startswith("===") else self.job.get("progress")
+                    self.log("   " + line[:300])
+        code = proc.wait()
+        self.job["progress"] = None
+        if self.cancel:
+            raise Fail("stopped")
+        if code != 0:
+            raise Fail(f"its setup exited {code}: " + " | ".join(tail[-4:])[-400:])
+
     def pull(self, image):
         empty = os.path.join(self.dir, "docker-config")             # no credential helper: public images only
         os.makedirs(empty, exist_ok=True)

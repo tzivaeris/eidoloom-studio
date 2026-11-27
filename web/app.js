@@ -548,7 +548,7 @@ function upSwitch(on, label, change, title = '') {
   b.onclick = async () => { const next = b.getAttribute('aria-checked') !== 'true'; b.disabled = true; try { await change(next); b.setAttribute('aria-checked', String(next)); } catch (e) { errToast(e, 'Not saved'); } b.disabled = false; };
   return b;
 }
-const UP_ICONS = { docker: 'layers', engines: 'plug', programs: 'cube', system: 'terminal' };
+const UP_ICONS = { models: 'brain', docker: 'layers', engines: 'plug', programs: 'cube', system: 'terminal' };
 async function paneUpdates(box) {
   let d = await GET('/api/admin/updates'), timer = null, checking = false;
   const hours = sel => { const s = el('select', { class: 'dlg-input up-hour' }); for (let h = 0; h < 24; h++) s.append(el('option', { value: String(h), text: String(h).padStart(2, '0') + ':00' })); s.value = String(sel); return s; };
@@ -612,7 +612,7 @@ async function paneUpdates(box) {
 }
 /* Tools & setup: what this machine is, which of Studio's tools are installed, and installing the chosen ones in the
    background (installer.py). Root-only steps come as one script to copy or download and run with sudo. */
-const SETUP_ICONS = { services: 'layers', tools: 'plug', engines: 'gauge' };
+const SETUP_ICONS = { models: 'brain', services: 'layers', tools: 'plug', engines: 'gauge' };
 const SETUP_BADGE = { installed: ['ok', 'Installed'], ready: ['up-new', 'Can install'], needs: ['bad', 'Needs something first'], later: ['', 'Later'], no: ['', 'Won’t fit here'] };
 const setupSize = mb => !mb ? '' : mb >= 1024 ? `${(mb / 1024).toFixed(mb >= 10240 ? 0 : 1)} GB` : `${mb} MB`;
 function setupProgress(p) {
@@ -623,19 +623,25 @@ function setupProgress(p) {
 }
 async function paneSetup(box) {
   let d = await GET('/api/admin/setup'), timer = null, chosen = new Set(), script = '', checking = false;
-  const installable = i => i.status === 'ready' || i.status === 'needs';
+  const picks = {};       // the model chosen for each local-model item
+  const addable = i => (i.choices || []).filter(c => c.fits && !c.installed);
+  const pick = i => (i.choices || []).find(c => c.id === picks[i.id]) || addable(i)[0] || null;
+  const installable = i => i.status === 'ready' || i.status === 'needs' || (i.status === 'installed' && addable(i).length > 0);
   const loadScript = async () => {
     const ids = chosen.size ? [...chosen] : d.items.filter(i => installable(i) && !i.extra).map(i => i.id);
     try { script = (await POST('/api/admin/setup/script', { ids })).script; } catch { script = ''; }
   };
   const install = async ids => {
-    const items = d.items.filter(i => ids.includes(i.id)), ready = items.filter(i => i.status === 'ready'), waiting = items.filter(i => i.status === 'needs');
+    const items = d.items.filter(i => ids.includes(i.id)), waiting = items.filter(i => i.status === 'needs');
+    const ready = items.filter(i => i.status === 'ready' || (i.status === 'installed' && pick(i) && !pick(i).installed));
+    const options = Object.fromEntries(ready.filter(i => i.choices).map(i => [i.id, pick(i)?.id]).filter(([, c]) => c));
     if (!ready.length) { toast(waiting.length ? 'Run the setup script first, then press Check again.' : 'Nothing to install.', 'warn', 4000); return; }
-    const dl = ready.reduce((a, i) => a + i.download_mb, 0), disk = ready.reduce((a, i) => a + i.disk_mb, 0);
-    const text = [`${ready.map(i => i.name).join(', ')}.`, dl ? `About ${setupSize(dl)} to download and ${setupSize(disk)} on disk (${d.machine.disk_free_gb} GB free).` : '',
+    const size = i => i.choices && pick(i) ? Math.round(pick(i).download_gb * 1024) : null;
+    const dl = ready.reduce((a, i) => a + (size(i) ?? i.download_mb), 0), disk = ready.reduce((a, i) => a + (size(i) != null ? size(i) + 12 * 1024 : i.disk_mb), 0);
+    const text = [`${ready.map(i => i.choices && pick(i) ? `${i.name}: ${pick(i).label}` : i.name).join(', ')}.`, dl ? `About ${setupSize(dl)} to download and ${setupSize(disk)} on disk (${d.machine.disk_free_gb} GB free).` : '',
       waiting.length ? `Waiting for the setup script: ${waiting.map(i => i.name).join(', ')}.` : '', 'It runs in the background; you can close this window.'].filter(Boolean).join('\n\n');
     if (!(await confirmBox(`Install ${ready.length === 1 ? ready[0].name : ready.length + ' tools'}?`, text, 'Install'))) return;
-    try { await POST('/api/admin/setup/install', { ids: ready.map(i => i.id) }); chosen.clear(); await refresh(); } catch (e) { errToast(e, 'Could not install'); }
+    try { await POST('/api/admin/setup/install', { ids: ready.map(i => i.id), options }); chosen.clear(); await refresh(); } catch (e) { errToast(e, 'Could not install'); }
   };
   const machineCard = () => {
     const m = d.machine, gpu = m.gpu, cards = m.gpus || [];
@@ -659,10 +665,21 @@ async function paneSetup(box) {
       el('label', { class: 'up-main' }, box_, el('b', { text: i.name }), el('span', { class: 'ac-badge ' + cls, text: label }),
         i.extra && i.status !== 'installed' ? el('span', { class: 'ac-badge su-extra', title: 'Not part of “Install everything”: choose it to install it', text: 'Optional' }) : null,
         i.engine && i.gpu_gb && i.status !== 'installed' ? el('span', { class: 'su-gpu', text: `${i.gpu_gb} GB card` }) : null, el('span', { class: 'grow' }),
-        i.status === 'ready' && !(d.job && !d.job.done) ? el('button', { class: 'btn sm primary', onclick: e => { e.preventDefault(); install([i.id]); } }, 'Install') : null),
+        installable(i) && i.status !== 'needs' && !(d.job && !d.job.done) ? el('button', { class: 'btn sm primary', onclick: e => { e.preventDefault(); install([i.id]); } },
+          i.status === 'installed' ? 'Add this model' : 'Install') : null),
       el('div', { class: 'up-note', text: i.what }));
+    if (i.choices) {
+      const now = pick(i);
+      const sel = el('select', { class: 'su-choice', 'aria-label': 'Model for ' + i.name, disabled: d.job && !d.job.done,
+        onchange: e => { picks[i.id] = e.target.value; render(); } },
+        ...i.choices.map(c => el('option', { value: c.id, disabled: !c.fits || c.installed, selected: now && c.id === now.id,
+          text: `${c.label} · ${c.download_gb} GB · ~${c.ram_gb} GB RAM${c.installed ? ' · installed' : !c.fits ? ' · does not fit' : ''}` })));
+      out.append(el('div', { class: 'su-choices' }, el('span', { class: 'up-note', text: 'Model:' }), sel));
+      if (now) out.append(el('div', { class: 'up-note', text: now.about }));
+      i.choices.filter(c => !c.fits && !c.installed).forEach(c => out.append(el('div', { class: 'su-why', text: `${c.label}: ${c.why}` })));
+    }
     if (i.why) out.append(el('div', { class: i.status === 'needs' ? 'up-err' : 'su-why', text: i.why }));
-    if (sizes && i.status !== 'installed') out.append(el('div', { class: 'up-note', text: sizes }));
+    if (sizes && i.status !== 'installed' && !i.choices) out.append(el('div', { class: 'up-note', text: sizes }));
     return out;
   };
   const render = () => {

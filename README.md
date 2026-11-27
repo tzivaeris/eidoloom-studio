@@ -176,8 +176,11 @@ picture, video, voice, music and sound engines need a graphics card; Tools & set
 
 2. Open http://127.0.0.1:8790 and create the admin password.
 
-3. Point Studio at your model server: set `gateway` in `studio.config.json`, then run
-   `systemctl --user restart eidoloom-studio`.
+3. Get a model. Either install one with Studio itself: Account & settings → Tools & setup → **Local models**
+   installs [PolyStrata](https://github.com/simplexai-labs/PolyStrata) or [Strata](https://github.com/Niko1221/Strata)
+   with a model that fits your machine, and Studio starts it whenever a chat picks it (see
+   [Local models](#local-models-strata-and-polystrata)). Or point Studio at a model server you already run: set
+   `gateway` in `studio.config.json` (or in Account & settings → Models), then run `systemctl --user restart eidoloom-studio`.
 
    | Server | `gateway` | Notes |
    | --- | --- | --- |
@@ -185,7 +188,7 @@ picture, video, voice, music and sound engines need a graphics card; Tools & set
    | [llama.cpp](https://github.com/ggml-org/llama.cpp) | `http://127.0.0.1:8080` | Start `llama-server` with `--jinja`, so tool calls work, and a large `-c`. |
    | [vLLM](https://github.com/vllm-project/vllm) | `http://127.0.0.1:8000` | Start it with `--enable-auto-tool-choice` and the model's `--tool-call-parser`. |
    | [LM Studio](https://lmstudio.ai) | `http://127.0.0.1:1234` | Start its server in the Developer tab. |
-   | [Strata](https://github.com/Niko1221/Strata) | `http://127.0.0.1:8080` | Its own server; or let Studio start it, see [Works with Strata](#works-with-strata). |
+   | [Strata](https://github.com/Niko1221/Strata) | `http://127.0.0.1:8080` | Its own server; or let Studio start it, see [Local models](#local-models-strata-and-polystrata). |
 
    If the server needs a key (`--api-key`), put it in `gateway_key`. An address ending in `/v1` works too.
 
@@ -201,11 +204,31 @@ and command cards to approve, undo, plans, goals, and Studio's tools (pictures, 
 Codex is for admins, in folders with the Sandbox off; its model runs on OpenAI's servers, so your code goes there, and
 it counts against your plan's Codex limits.
 
-## Works with Strata
+## Local models: Strata and PolyStrata
 
-[Strata](https://github.com/Niko1221/Strata) (MIT licence) runs Qwen3.8-Flash-Next, a 125B mixture-of-experts model, on
-an ordinary graphics card with 64 GB of RAM. Eidoloom Studio was built and tested night after night with it, and does
-more with it than with other model servers. Strata is a separate project by its own authors.
+[Strata](https://github.com/Niko1221/Strata) (MIT licence) runs Qwen3.8-Flash-Next, a 125B mixture-of-experts model, and
+its fine-tune Swift 1.5 on an ordinary graphics card with 64 GB of RAM. [PolyStrata](https://github.com/simplexai-labs/PolyStrata)
+(MIT licence), built on Strata, adds a second engine for more models, among them Qwen3.6-35B-A3B and Ornith 1.5 122B,
+with 128K of context. Eidoloom Studio was built and tested night after night with Strata. Both are separate projects
+by their own authors.
+
+**Install them from Studio.** Account & settings → Tools & setup → Local models lists PolyStrata and Strata, each with
+the models that fit this machine's card, RAM and disk. Pick a model and press Install: Studio fetches the server at a
+tested version, its own setup builds the engine for your card (AMD or NVIDIA) and downloads the model, with the
+download's progress on the page. Nothing else is needed: no Ollama, no Ollama Manager. The installed models appear in
+the model picker beside any others, and the first message to one starts its server on a port of its own
+(`local_port`, 8097); choosing another switches it once nothing else uses it, and an idle model is unloaded after
+`strata_idle_minutes`. Add another model later with **Add this model**. Account & settings → Updates checks both for
+new versions and updates them through their own setup (the earlier engine is kept for rolling back).
+
+| Model | Server | Download | Best at |
+| --- | --- | --- | --- |
+| Qwen3.6-35B-A3B UD-Q4_K_M | PolyStrata | 22.7 GB, ~10 GB of RAM | speed: 110–200 tokens/s on a 24 GB card |
+| Ornith 1.5 122B UD-IQ3_XXS | PolyStrata | 49.5 GB, ~37 GB of RAM | following a long chat's rules, Greek; 25–47 tokens/s |
+| Swift 1.5 IQ3_XXS | Strata | 75.8 GB, ~60 GB of RAM | the model Studio's own benchmark used; about 60 tokens/s |
+
+PolyStrata's own engine does not take `logit_bias` on AMD cards, so for its models Studio removes stray Chinese or
+Cyrillic characters after they are written instead of preventing them; Strata's engine prevents them.
 
 **Use a Strata server that is already running.** Point `gateway` at it (`http://127.0.0.1:8080` by default). Studio
 recognises it and then:
@@ -217,7 +240,8 @@ recognises it and then:
 - unloads the model after `strata_idle_minutes` without requests (15), so the card is free for other work;
 - passes pictures to it, and lets you give its model a friendly name (Account & settings → Models → Rename).
 
-**Or let Studio start Strata.** Set `strata_dir` to your Strata folder and `gateway` to a free port, for example:
+**Or let Studio start a Strata you installed yourself.** Set `strata_dir` to your Strata folder (or `polystrata_dir`
+to a PolyStrata folder) and `local_port` to a free port, or, with no other model server, `gateway` to a free port, for example:
 
 ```json
 "strata_dir": "~/Strata",
@@ -248,7 +272,9 @@ chats.
 | `max_turns` | How many model calls one agent run may make. |
 | `command_timeout_s` | How many seconds one command of the agent may run. |
 | `public_url` | The address people use when Studio sits behind a proxy, for invite links. |
-| `strata_dir` | A Strata folder: Studio starts Strata itself, one profile at a time (see above). Empty: it does not. |
+| `strata_dir` | A Strata folder: Studio starts Strata itself, one profile at a time (see above). Empty: it does not. Tools & setup sets it. |
+| `polystrata_dir` | A PolyStrata folder, the same way (its profiles are in `terminal/`). Tools & setup sets it. |
+| `local_port` | The port Studio starts Strata or PolyStrata on, beside `gateway`'s models; `0` makes that server the gateway. |
 | `strata_idle_minutes` | With Strata, unload the model after this many minutes without requests; `0` never. |
 
 Every other setting and its default is in `DEFAULT_CONFIG` near the top of `studio.py`.

@@ -1797,6 +1797,8 @@ html.phone .bv-shot.held .bv-img { touch-action: none; }
 .su-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .su-machine .dlg-sub, .su-script .dlg-sub { display: flex; align-items: center; gap: 4px; }
 .su-why { font-size: 12px; color: var(--fg-dim); overflow-wrap: anywhere; }
+.su-choices { display: flex; align-items: center; gap: 8px; margin: 6px 0 2px; flex-wrap: wrap; }
+.su-choice { max-width: 100%; min-width: 0; flex: 1 1 260px; }
 .su-extra { background: var(--bg-hover); color: var(--fg-dim); }
 .su-gpu { font-size: 11px; color: var(--fg-dim); white-space: nowrap; }
 .su-row.su-no b { color: var(--fg-dim); }

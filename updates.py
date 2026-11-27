@@ -76,6 +76,12 @@ def catalog(root):
         {"id": "sandbox-image", "group": "docker", "name": "Sandbox image (strata-sandbox:universal)", "kind": "sandbox", "auto_ok": False,
          "dockerfile": os.path.join(root, "sandbox", "images", "universal.Dockerfile"),
          "note": "Rebuilt from its Dockerfile with fresh base images and tools (a large download). New sandboxes use it; running ones keep theirs until recreated."},
+        # ---- Local models: the checkouts Tools & setup installed (or the config names); their own setup.sh updates them
+        {"id": "polystrata", "group": "models", "name": "PolyStrata (local models)", "kind": "localmodel", "key": "polystrata_dir", "home": "terminal",
+         "auto_ok": False, "note": "Gets the newest code, rebuilds the engine for the card and updates the models' settings (its own setup.sh --update). "
+                                   "Its models stay; the earlier engine is kept for rolling back."},
+        {"id": "strata", "group": "models", "name": "Strata", "kind": "localmodel", "key": "strata_dir", "home": "", "auto_ok": False,
+         "note": "The same through Strata's own setup.sh --update. A Strata the Ollama Manager runs is updated by the Manager instead."},
         # ---- Tool servers and engines
         {"id": "context7", "group": "engines", "name": "Context7 tool server", "kind": "npx", "package": "@upstash/context7-mcp", "servers": ["context7"], "auto_ok": True},
         {"id": "playwright-mcp", "group": "engines", "name": "Browser tool server (Playwright MCP)", "kind": "npx", "package": "@playwright/mcp", "servers": ["browser"], "auto_ok": True},
@@ -107,7 +113,7 @@ def catalog(root):
     ]
 
 
-GROUPS = [("docker", "Docker services and images"), ("engines", "Tool servers and engines"), ("programs", "Programs and web libraries"),
+GROUPS = [("models", "Local models"), ("docker", "Docker services and images"), ("engines", "Tool servers and engines"), ("programs", "Programs and web libraries"),
           ("system", "System packages")]
 
 
@@ -279,6 +285,58 @@ class Updates:
         tag = self.sh(["git", "-C", path, "describe", "--tags", "--abbrev=0", "@{u}"], check=False)[1].splitlines()
         return {"current": here, "latest": there + (f" ({tag[-1]})" if tag and not tag[-1].startswith("fatal") else ""), "available": behind > 0,
                 "detail": f"{behind} new commit{'s' if behind != 1 else ''}" if behind else ""}
+
+    def local_path(self, item):
+        """The checkout Studio starts the item's models from (config strata_dir / polystrata_dir), or None."""
+        get = self.hooks.get("config_get")
+        path = os.path.expanduser((get(item["key"]) if get else "") or "")
+        return path if path and os.path.isdir(os.path.join(path, ".git")) else None
+
+    def check_localmodel(self, item):
+        path = self.local_path(item)
+        if not path:
+            return {"current": "not installed by Studio", "latest": "", "available": False,
+                    "detail": "Install it in Tools & setup; a Strata the Ollama Manager runs is updated there."}
+        self.sh(["git", "-C", path, "fetch", "--quiet", "--tags", "origin"], timeout=300)
+        branch = self.sh(["git", "-C", path, "rev-parse", "--abbrev-ref", "origin/HEAD"], check=False)[1].strip() or "origin/main"
+        here = self.sh(["git", "-C", path, "log", "-1", "--format=%h %cs"])[1]
+        there = self.sh(["git", "-C", path, "log", "-1", "--format=%h %cs", branch])[1]
+        behind = int(self.sh(["git", "-C", path, "rev-list", "--count", f"HEAD..{branch}"])[1] or 0)
+        tag = self.sh(["git", "-C", path, "describe", "--tags", "--abbrev=0", branch], check=False)[1].splitlines()
+        return {"current": here, "latest": there + (f" ({tag[-1]})" if tag and not tag[-1].startswith("fatal") else ""), "available": behind > 0,
+                "detail": f"{behind} new commit{'s' if behind != 1 else ''}" if behind else ""}
+
+    def update_localmodel(self, item):
+        path = self.local_path(item)
+        if not path:
+            raise Fail("not installed by Studio")
+        busy = self.hooks["busy"]()
+        if busy:
+            raise Fail(f"not now: {busy}")
+        stop = self.hooks.get("local_stop")
+        if stop:
+            stop()                              # the server must not run the engine being rebuilt
+        before = self.sh(["git", "-C", path, "rev-parse", "HEAD"])[1].strip()
+        self.info(item["id"])["prev"] = {"commit": before}
+        branch = self.sh(["git", "-C", path, "rev-parse", "--abbrev-ref", "origin/HEAD"], check=False)[1].strip() or "origin/main"
+        self.sh(["git", "-C", path, "checkout", "--quiet", "-B", branch.split("/", 1)[1], branch], timeout=300)
+        self.sh([os.path.join(path, "setup.sh"), "--update", "--yes", "--no-start", "--no-browser"], cwd=path, timeout=6 * 3600,
+                env={"PYTHONUNBUFFERED": "1", "NO_COLOR": "1"})
+        return f"Updated to {self.sh(['git', '-C', path, 'log', '-1', '--format=%h %cs'])[1]}; its models start with the new engine next time."
+
+    def rollback_localmodel(self, item, prev):
+        path = self.local_path(item)
+        if not path or not prev.get("commit"):
+            raise Fail("no earlier version is recorded")
+        busy = self.hooks["busy"]()
+        if busy:
+            raise Fail(f"not now: {busy}")
+        stop = self.hooks.get("local_stop")
+        if stop:
+            stop()
+        self.sh(["git", "-C", path, "checkout", "--quiet", prev["commit"]], timeout=300)
+        self.sh([os.path.join(path, "setup.sh"), "--rollback-engine", "--yes"], cwd=path, timeout=1800, env={"NO_COLOR": "1"})
+        return f"Back to {self.sh(['git', '-C', path, 'log', '-1', '--format=%h %cs'])[1]} and its earlier engine."
 
     def pip_version(self, item):
         code, out = self.sh([item["python"], "-m", "pip", "show", item["package"]], check=False)

@@ -3781,6 +3781,38 @@ def test_updates(tmp):
     real = {i["id"]: i for i in updates.catalog(ROOT)}
     check("the real catalogue: only Docker images that change no database, and npx tool servers, update by themselves",
           sorted(k for k, v in real.items() if v["auto_ok"]) == ["context7", "languagetool", "mcp-fetch", "mcp-searxng", "playwright-mcp", "postgres-mcp", "searxng"])
+    # A local model checkout (PolyStrata) one commit behind its origin: checked, updated by its own setup.sh, rolled back.
+    base = os.path.join(tmp, "localmodel")
+    origin, clone = os.path.join(base, "origin"), os.path.join(base, "PolyStrata")
+    git = lambda *a, cwd=None: subprocess.run(["git", *a], cwd=cwd, check=True, capture_output=True, text=True).stdout.strip()
+    os.makedirs(origin)
+    git("init", "-q", "-b", "main", cwd=origin)
+    with open(os.path.join(origin, "setup.sh"), "w") as fh:
+        fh.write('#!/bin/sh\necho "$@" >> calls.txt\n')
+    os.chmod(os.path.join(origin, "setup.sh"), 0o755)
+    for n in (1, 2):
+        open(os.path.join(origin, "v.txt"), "w").write(str(n))
+        git("add", "-A", cwd=origin)
+        git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", f"v{n}", cwd=origin)
+    git("clone", "-q", origin, clone)
+    first = git("rev-parse", "HEAD~1", cwd=clone)
+    git("checkout", "-q", first, cwd=clone)                    # as Tools & setup leaves it: the pinned commit, detached
+    stopped = []
+    lm = updates.Updates(os.path.join(tmp, "updates-local"), ROOT, {"busy": lambda: None, "server_enabled": lambda n: False,
+                                                                   "config_get": {"polystrata_dir": clone}.get, "local_stop": lambda: stopped.append(1)})
+    item = lm.items["polystrata"]
+    seen = lm.check_localmodel(item)
+    check("a PolyStrata checkout behind its origin has an update", seen["available"] and seen["detail"] == "1 new commit", seen)
+    lm.job = {"log": []}
+    message = lm.update_localmodel(item)
+    calls = open(os.path.join(clone, "calls.txt")).read()
+    check("updating stops its server, moves to the newest code and runs its own setup.sh --update",
+          stopped and open(os.path.join(clone, "v.txt")).read() == "2" and "--update --yes --no-start" in calls and message.startswith("Updated to"), (calls, message))
+    lm.rollback_localmodel(item, lm.info("polystrata")["prev"])
+    check("rolling back returns to the earlier commit and its earlier engine",
+          git("rev-parse", "HEAD", cwd=clone) == first and "--rollback-engine" in open(os.path.join(clone, "calls.txt")).read())
+    none = updates.Updates(os.path.join(tmp, "updates-none"), ROOT, {"busy": lambda: None, "config_get": {}.get})
+    check("a Strata that Studio did not install has nothing to update here", not none.check_localmodel(none.items["strata"])["available"])
 
 
 def test_installer(c):
@@ -3866,6 +3898,51 @@ def test_installer(c):
     except installer.Fail as e:
         refused = "sha256" in str(e) and not os.path.exists(dest + "2") and not os.path.exists(dest + "2.part")
     check("a download is checked against its sha256: a match moves in, a mismatch is removed", fetched and refused)
+    # Local models: which of PolyStrata's and Strata's models fit, and the install through their own setup.sh.
+    saved_manager, installer.MANAGER = installer.MANAGER, "http://127.0.0.1:9"
+    inst.machine.update(ram_gb=30, disk_free_gb=500)
+    poly, strata = inst.items["polystrata"], inst.items["strata"]
+    fit = {c["id"]: c for c in inst.choices(poly, inst.machine)}
+    check("with 30 GB of RAM and a 16 GB card, Qwen3.6 fits and Ornith 122B does not, saying why; Strata's Swift fits nowhere",
+          fit["qwen36-ud-q4_k_m"]["fits"] and not fit["ornith122-ud-iq3_xxs"]["fits"] and "RAM" in fit["ornith122-ud-iq3_xxs"]["why"]
+          and inst.status(strata, inst.machine)["status"] == "no" and inst.status(poly, inst.machine)["status"] != "no", fit)
+    inst.machine.update(ram_gb=64)
+    home = os.path.join(installer.OPT, "PolyStrata")
+    os.makedirs(os.path.join(home, ".git"))
+    os.makedirs(os.path.join(home, "terminal", "serve"))
+    open(os.path.join(home, "terminal", "serve", "server.py"), "w").write("")
+    json.dump({"model_name": "qwen3.6-35b-a3b-ud-q4_k_m", "args": []}, open(os.path.join(home, "terminal", "strata-qwen36-ud-q4_k_m.json"), "w"))
+    st = inst.status(poly, inst.machine)
+    fit = {c["id"]: c for c in inst.choices(poly, inst.machine)}
+    check("a PolyStrata with a model is installed, and its other model can still be added",
+          st["status"] == "installed" and "qwen3.6" in st["why"] and fit["qwen36-ud-q4_k_m"]["installed"] and fit["ornith122-ud-iq3_xxs"]["fits"]
+          and not fit["ornith122-ud-iq3_xxs"]["installed"], (st, fit))
+    with open(os.path.join(home, "setup.sh"), "w") as fh:       # plays PolyStrata's setup: --output jsonl events, then the profile
+        fh.write("#!/bin/sh\necho \"$@\" > args.txt\n"
+                 "echo '{\"schema_version\": 1, \"event\": \"step\", \"n\": 5, \"title\": \"downloading Ornith\"}'\n"
+                 "echo '{\"schema_version\": 1, \"event\": \"progress\", \"label\": \"Ornith.gguf\", \"done_bytes\": 10, \"total_bytes\": 20}'\n"
+                 "echo 'plain words the setup prints'\n"
+                 "echo '{\"model_name\": \"ornith-1.5-122b-ud-iq3_xxs\", \"args\": []}' > terminal/strata-ornith122-ud-iq3_xxs.json\n"
+                 "echo '{\"schema_version\": 1, \"event\": \"done\", \"exit_code\": 0}'\n")
+    os.chmod(os.path.join(home, "setup.sh"), 0o755)
+    told = []
+    inst.hooks.update(set_config=lambda k, v: told.append((k, v)), config_get=lambda k: None)
+    inst.job = {"options": {"polystrata": "ornith122-ud-iq3_xxs"}, "log": [], "progress": None}
+    inst.log = lambda line: inst.job["log"].append(line)
+    inst.install_local(poly)
+    args = open(os.path.join(home, "args.txt")).read()
+    check("installing a model runs PolyStrata's own setup for it (no start, jsonl), shows its steps, and points Studio at it, the port first",
+          "--family ornith122 --model UD-IQ3_XXS --context 131072 --port 8097 --no-start --no-browser --yes --setup --output jsonl" in args
+          and any("downloading Ornith" in l for l in inst.job["log"]) and told == [("local_port", 8097), ("polystrata_dir", home)]
+          and {c["id"]: c for c in inst.choices(poly, inst.machine)}["ornith122-ud-iq3_xxs"]["installed"], (args, inst.job["log"], told))
+    try:
+        inst.install_local(poly)
+        again = True
+    except installer.Fail as e:
+        again = "all installed" in str(e)
+    check("with both models installed there is nothing left to add", again)
+    del inst.log
+    installer.MANAGER = saved_manager
     installer.OPT = saved_opt
     check("the order puts what a tool needs before it", inst.order(["browser"]) == ["playwright", "browser"])
     real = installer.catalog(ROOT, "/data")
@@ -5717,6 +5794,79 @@ def test_strata_started(tmp):
                 pass
 
 
+def test_local_models(tmp):
+    """A PolyStrata folder (polystrata_dir) with local_port: its models sit beside the gateway's (Ollama), a chat with one
+    starts its server on local_port from terminal/, and a gateway model still goes to the gateway."""
+    print("Local models beside the gateway")
+    folder = os.path.join(tmp, "local-models")
+    projects, poly = os.path.join(folder, "projects"), os.path.join(folder, "PolyStrata")
+    term = os.path.join(poly, "terminal")
+    os.makedirs(os.path.join(projects, "app"))
+    os.makedirs(os.path.join(term, "serve"))
+    os.makedirs(os.path.join(term, ".venv", "bin"))
+    os.symlink(sys.executable, os.path.join(term, ".venv", "bin", "python"))
+    open(os.path.join(projects, "app", "a.txt"), "w").write("hello\n")
+    starts = os.path.join(poly, "starts.jsonl")
+    with open(os.path.join(term, "serve", "server.py"), "w") as fh:
+        fh.write("import argparse, json, os, sys\n"
+                 "ap = argparse.ArgumentParser()\n"
+                 "for a in ('--engine', '--config', '--host'): ap.add_argument(a)\n"
+                 "ap.add_argument('--port', type=int)\nap.add_argument('--lazy', action='store_true')\n"
+                 "a, _ = ap.parse_known_args()\ncfg = json.load(open(a.config))\n"
+                 f"open({starts!r}, 'a').write(json.dumps({{'model': cfg['model_name'], 'args': cfg['args'], 'port': a.port, 'cwd': os.getcwd(), 'pid': os.getpid()}}) + '\\n')\n"
+                 "os.environ.update(MOCK_STRATA='1', MOCK_STRATA_MODEL=cfg['model_name'], MOCK_STRATA_LOAD_S='0.5', MOCK_STRATA_LOG=cfg.get('log', ''))\n"
+                 "import runpy\nsys.argv = ['mock_gateway.py', str(a.port)]\n"
+                 f"runpy.run_path({os.path.join(ROOT, 'mock_gateway.py')!r}, run_name='__main__')\n")
+    json.dump({"model_name": "ornith-1.5-122b-ud-iq3_xxs", "display_name": "Ornith 1.5 122B UD-IQ3_XXS", "args": ["--max-context", "131072"],
+               "exe": "engine-poly/strata-poly", "log": os.path.join(term, "strata-ornith.log")}, open(os.path.join(term, "strata-ornith.json"), "w"))
+    port, gw_port, local_port = free_port(), free_port(), free_port()
+    config = os.path.join(folder, "app", "studio.config.json")
+    os.makedirs(os.path.dirname(config))
+    json.dump({"host": "127.0.0.1", "port": port, "gateway": f"http://127.0.0.1:{gw_port}", "workspace_roots": [projects],
+               "user_root": os.path.join(projects, "users"), "max_turns": 10, "command_timeout_s": 20, "polystrata_dir": poly,
+               "local_port": local_port, "session_cache_dir": os.path.join(folder, "sessions")}, open(config, "w"))
+    servers = [subprocess.Popen([sys.executable, os.path.join(ROOT, "mock_gateway.py"), str(gw_port)], stdout=subprocess.DEVNULL)]
+
+    def started():
+        return [json.loads(l) for l in open(starts)] if os.path.exists(starts) else []
+    try:
+        wait_port(gw_port, servers[0])
+        servers.append(start_studio(folder, config, port))
+        admin = Client(port)
+        admin.post("/api/auth/setup", {"password": "admin password"})
+        d = admin.get("/api/models")[1]
+        by = {m["name"]: m for m in d["models"]}
+        check("PolyStrata's models are listed beside the gateway's, named as its config names them, before any server runs",
+              by.get("ornith-1.5-122b-ud-iq3_xxs", {}).get("local") == "polystrata" and by["ornith-1.5-122b-ud-iq3_xxs"]["label"].startswith("Ornith 1.5 122B")
+              and any(m["kind"] == "ollama" for m in d["models"]) and not started(), sorted(by))
+        st = admin.get("/api/model/status?model=ornith-1.5-122b-ud-iq3_xxs")[1]
+        check("a local model with no server running is Not loaded", st.get("label") == "Not loaded", st)
+        ws = admin.post("/api/workspace/open", {"path": os.path.join(projects, "app")})[1]["workspace"]["id"]
+        sid = admin.post("/api/agent/sessions", {"ws": ws})[1]["id"]
+        _, events = run_agent(admin, ws, sid, "Please list the files", model="ornith-1.5-122b-ud-iq3_xxs", auto_commands=True)
+        s1 = started()
+        texts = [e.get("text") or "" for e in events if e.get("type") == "status"]
+        check("a chat with it starts PolyStrata's server on local_port, from terminal/, and the run finishes",
+              len(s1) == 1 and s1[0]["port"] == local_port and os.path.realpath(s1[0]["cwd"]) == os.path.realpath(term)
+              and "--vram-reserve-mib" not in s1[0]["args"] and any(t.startswith("Starting PolyStrata with Ornith") for t in texts)
+              and any(e.get("type") == "done" for e in events) and not any(e.get("type") == "error" for e in events), [s1, texts[:3]])
+        st = admin.get("/api/model/status?model=ornith-1.5-122b-ud-iq3_xxs")[1]
+        check("its status comes from the local server", st.get("state") not in (None, "offline"), st)
+        ollama = next(m["name"] for m in d["models"] if m["kind"] == "ollama" and m.get("tools"))
+        sid2 = admin.post("/api/agent/sessions", {"ws": ws})[1]["id"]
+        _, events = run_agent(admin, ws, sid2, "Please list the files", model=ollama, auto_commands=True)
+        check("a gateway model still goes to the gateway, and no second local server starts",
+              any(e.get("type") == "done" for e in events) and len(started()) == 1, [e.get("type") for e in events][-3:])
+    finally:
+        for proc in servers:
+            proc.terminate()
+        for s in started():
+            try:
+                os.kill(s["pid"], 15)
+            except OSError:
+                pass
+
+
 def main():
     tmp = tempfile.mkdtemp(prefix="studio-test-")
     projects, sample, outside = make_fixture(tmp)
@@ -5786,6 +5936,8 @@ def main():
             test_strata_direct(tmp)
         if not only or "test_strata_started" in only:
             test_strata_started(tmp)
+        if not only or "test_local_models" in only:
+            test_local_models(tmp)
         if not only or "test_announce" in only:
             test_announce(c, projects, gw_port)
         if not only or "test_questions" in only:
