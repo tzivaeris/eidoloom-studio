@@ -6029,6 +6029,26 @@ def test_repeat_and_stray(c, projects, gw_port):
             run, "t.py", sm.edit_signature(old, "import time\n\n# seconds in a minute\nMINUTE = 60\ndef parse_ts(x):\n    return x * 60\n")))
         check("renamed with an underscore, it is the same edit", sm.repeats_rejected(
             run, "t.py", sm.edit_signature(old, "import time\n_MINUTE = 60\n\ndef parse_ts(x):\n    return x * 60\n")))
+        for why, text in (("another value", "import time\nMINUTE = 3600\n\ndef parse_ts(x):\n    return x * 60\n"),
+                          ("another sign", "import time\nMINUTE = -60\n\ndef parse_ts(x):\n    return x * 60\n"),
+                          ("another string", "import time\nMINUTE = '60'\n\ndef parse_ts(x):\n    return x * 60\n")):
+            check(f"a similar edit with {why} is a different one", not sm.repeats_rejected(run, "t.py", sm.edit_signature(old, text)), why)
+        guard = sm.edit_signature("def ok(n):\n    return True\n", "def ok(n):\n    if n < 5:\n        return False\n    return True\n")
+        check("a condition with <= instead of < is a different edit", not sm.repeats_rejected(
+            types.SimpleNamespace(rejected=[("g.py", guard)]), "g.py",
+            sm.edit_signature("def ok(n):\n    return True\n", "def ok(n):\n    if n <= 5:\n        return False\n    return True\n")))
+        check("a message with one word changed is a different edit", not sm.repeats_rejected(
+            types.SimpleNamespace(rejected=[("m.py", sm.edit_signature("", 'print("Saved the file")\n'))]), "m.py",
+            sm.edit_signature("", 'print("Saved the files")\n')))
+        whole = sm.edit_signature(old, "import time\nMINUTE = 60\n\ndef parse_ts(x):\n    return x * MINUTE\n")
+        check("the rejected constant with its uses added is not sent back, but the card says it holds the rejected change",
+              not sm.repeats_rejected(run, "t.py", whole) and sm.holds_rejected(run, "t.py", whole)
+              and not sm.holds_rejected(run, "t.py", sm.edit_signature(old, "import time\n\ndef parse_ts(x):\n    return x * 60.0\n")))
+        check("a command naming a file with a rejected change is found; another file is not",
+              sm.names_rejected_file(run, "sed -i 's/60/MINUTE/' t.py") == "t.py" and sm.names_rejected_file(run, "cat notes.txt") is None
+              and sm.names_rejected_file(run, "python3 test.py") is None)
+        check("two lines that differ only in names have the same skeleton", sm.edit_skeleton("SECONDS=60") == sm.edit_skeleton("_SECONDS=60")
+              and sm.edit_skeleton("x<5") != sm.edit_skeleton("x<=5"))
         check("using the constant as well is a different one", not sm.repeats_rejected(
             run, "t.py", sm.edit_signature(old, "import time\nMINUTE = 60\n\ndef parse_ts(x):\n    return x * MINUTE\n")))
         say = lambda *m: types.SimpleNamespace(session={"messages": [{"role": r, "content": t} for r, t in m]})
@@ -6088,6 +6108,22 @@ def test_repeat_and_stray(c, projects, gw_port):
               asked and asked[0].startswith("Studio note: the conversation is getting too long") and history[0]["content"].startswith(sm.COMPACT_INTRO)
               and "The user's latest message" in history[0]["content"] and history[1]["role"] == "assistant" and history[-1]["role"] == "tool"
               and any(k == "compacted" for k, _ in seen), [(m["role"], str(m.get("content"))[:40]) for m in history])
+        rule = "Each task has an id that is never reused, even after deletion."
+        fake2 = types.SimpleNamespace(model="tiny:ctx8k", quiet=False, emit=lambda kind, **kw: seen.append((kind, kw)),
+                                      session={"ctx_ratio": 1.0, "messages": [{"role": "user", "content": "Make todo.py. " + rule},
+                                                                              {"role": "user", "content": "Add delete ID."}]})
+        sm.call_model = lambda run, messages: {"content": "Summary: todo.py was made; ids are never reused. Delete is next.", "tool_calls": []}
+        sm.build_system_prompt = lambda run: "system"
+        try:
+            history = ([{"role": "user", "content": "Make todo.py. " + rule}] + reads[:6]
+                       + [{"role": "user", "content": "Add delete ID."}] + reads[6:])
+            sm.compact_in_run(fake2, history, 8192, 9999)
+        finally:
+            sm.call_model, sm.build_system_prompt = real_call, real_prompt
+        check("after a summary the user's earlier requests are kept word for word, the latest only once",
+              rule in history[0]["content"] and "word for word" in history[0]["content"]
+              and sum(m["content"].count("Add delete ID.") for m in history if isinstance(m.get("content"), str)) == 1,
+              history[0]["content"][-400:])
         check("Ollama's num_ctx is read from /api/show", sm.num_ctx_of({"parameters": "stop <x>\nnum_ctx 32768\ntemperature 0.7"}) == 32768
               and sm.num_ctx_of({}) is None)
     finally:

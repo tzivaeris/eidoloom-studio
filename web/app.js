@@ -7193,6 +7193,7 @@ function approvalCard(d, live) {
   const head = el('div', { class: 'ah' }, el('span', { class: 'kind', text: isSkill ? 'Skill' : isMcp ? 'Tool' : deleting ? 'Delete' : picture ? 'Picture' : document ? 'Document' : isEdit ? 'Edit' : 'Command' }));
   const acts = el('div', { class: 'acts' });
   const card = el('div', { class: 'm-appr pending' + (isSkill ? ' skill' : '') }, head);
+  if (d.warning) card.append(el('div', { class: 'appr-warn', text: d.warning }));
   if (isSkill) {
     head.append(el('span', { class: 'p', text: `Save a ${d.skill_kind} skill: ${d.name}`, title: d.name }));
     a.view = el('div', {}, el('div', { class: 'skill-desc', text: d.description }), el('pre', { class: 'skill-steps', text: d.instructions })); card.append(a.view);

@@ -64,7 +64,7 @@ a { color: var(--accent); }
 <h2 id="talk">Working with the agent</h2>
 <h3>Approvals</h3>
 <ul>
-<li><b>Edits</b> show as a card with the change: <b>Accept</b>, <b>Reject</b>, or <b>Choose parts</b> to accept only some of the changed places. An edit you rejected is not shown again in the same run with only comments or its place changed: the agent is told to ask you or try something else.</li>
+<li><b>Edits</b> show as a card with the change: <b>Accept</b>, <b>Reject</b>, or <b>Choose parts</b> to accept only some of the changed places. An edit you rejected is not shown again in the same run with only comments, its place or a name changed: the agent is told to ask you or try something else. A later edit that holds the rejected change with more added says so on its card, and a command that names that file asks you even with auto-run on, so a rejected change is never made without your yes.</li>
 <li><b>Commands</b> show the exact command: <b>Run</b> or <b>Skip</b>.</li>
 <li><b>Auto-apply edits</b> and <b>Auto-run commands</b> in the top bar stop the asking. Turn them on when you trust the task.</li>
 <li>Every edit has <b>Undo</b>. Deleted files go to the trash in <code>.strata-studio/trash</code>.</li>
@@ -276,7 +276,7 @@ a { color: var(--accent); }
 <h2 id="el-talk">Δουλεύοντας με τον βοηθό</h2>
 <h3>Εγκρίσεις</h3>
 <ul>
-<li>Οι <b>αλλαγές σε αρχεία</b> εμφανίζονται σε κάρτα με τη διαφορά: <b>Accept</b> (αποδοχή), <b>Reject</b> (απόρριψη) ή <b>Choose parts</b> για να δεχτείτε μόνο κάποια από τα σημεία που αλλάζουν. Μια αλλαγή που απορρίψατε δεν εμφανίζεται ξανά στην ίδια εργασία αν διαφέρει μόνο στα σχόλια ή στη θέση της: ο βοηθός καλείται να σας ρωτήσει ή να δοκιμάσει κάτι άλλο.</li>
+<li>Οι <b>αλλαγές σε αρχεία</b> εμφανίζονται σε κάρτα με τη διαφορά: <b>Accept</b> (αποδοχή), <b>Reject</b> (απόρριψη) ή <b>Choose parts</b> για να δεχτείτε μόνο κάποια από τα σημεία που αλλάζουν. Μια αλλαγή που απορρίψατε δεν εμφανίζεται ξανά στην ίδια εργασία αν διαφέρει μόνο στα σχόλια, στη θέση της ή σε ένα όνομα: ο βοηθός καλείται να σας ρωτήσει ή να δοκιμάσει κάτι άλλο. Μια επόμενη αλλαγή που περιέχει την απορριφθείσα μαζί με άλλα το λέει στην κάρτα της, και μια εντολή που αναφέρει εκείνο το αρχείο σας ρωτά ακόμη και με την αυτόματη εκτέλεση, ώστε μια αλλαγή που απορρίψατε να μη γίνεται ποτέ χωρίς το ναι σας.</li>
 <li>Οι <b>εντολές</b> δείχνουν ακριβώς τι θα εκτελεστεί: <b>Run</b> ή <b>Skip</b>.</li>
 <li>Τα <b>Auto-apply edits</b> και <b>Auto-run commands</b> στην πάνω μπάρα σταματούν τις ερωτήσεις. Ενεργοποιήστε τα όταν εμπιστεύεστε την εργασία.</li>
 <li>Κάθε αλλαγή έχει <b>Undo</b>. Τα αρχεία που διαγράφονται πηγαίνουν στον κάδο, στο <code>.strata-studio/trash</code>.</li>

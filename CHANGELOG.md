@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **A rejected change is never made without a new yes**: a later edit that holds it with more lines added says so on
+  its card, and a command that names the file asks even with auto-run on. Only a changed name counts as the same
+  line: a changed number, string or operator makes a different edit (`n < 5` and `n <= 5` are not the same). When a
+  small model's chat is summarized in the run, the user's earlier requests are kept beside the summary word for word.
+- Benchmark results by test, how runs are scored and the reviewer's verdicts: `docs/BENCHMARK.md`.
 - A rejected edit sent again with a line renamed slightly (`_SECONDS_PER_MINUTE` for `SECONDS_PER_MINUTE`) also
   counts as the same edit. In a Greek chat, short English remarks between tool calls get a note to write Greek.
 - **Models with a small context window** (Ollama models with `num_ctx`, read from `/api/show`) no longer run out of

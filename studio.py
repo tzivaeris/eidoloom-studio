@@ -7048,13 +7048,51 @@ def repeats_rejected(run, rel, sig):
     return False
 
 
+REJECTED_INSIDE = ("This change includes the change to {rel} you rejected earlier in this run{more}. "
+                   "Accept only if you want it after all.")
+REJECTED_FILE_COMMAND = ("This command names {rel}, where you rejected a change earlier in this run, so Studio asks even "
+                         "with auto-run on: a command could make the rejected change without an edit card.")
+
+
+def holds_rejected(run, rel, sig):
+    """Whether an edit carries most of a change the user rejected to the same file, with other lines added: not sent
+    back like a repeat (it may be the materially different change the user wanted), but the card says so."""
+    if not sig or not APP.cfg.get("repeat_check", True):
+        return False
+    for path, before in getattr(run, "rejected", []):
+        if path == rel and before and sum(1 for b in before if any(a == b or edits_alike({a}, {b}) >= 1 for a in sig)) / len(before) >= 0.8:
+            return True
+    return False
+
+
+def names_rejected_file(run, command):
+    """The first file with a rejected change in this run that a command names (its path, or its name as a word)."""
+    for rel, _ in getattr(run, "rejected", []):
+        name = rel.rsplit("/", 1)[-1]
+        if any(re.search(rf"(?<![\w.-]){re.escape(n)}(?![\w-])", command) for n in {rel, name}):
+            return rel
+    return None
+
+
 def edits_alike(sig, before):
     """How much of two edits' added lines are the same, counting lines 90% alike as one (Keystone's third try after a
     rejection renamed SECONDS_PER_MINUTE to _SECONDS_PER_MINUTE, test 4 of 2026-11-27)."""
     def alike(a, b):
-        return a == b or difflib.SequenceMatcher(None, a, b).ratio() >= 0.9
+        if a == b:
+            return True
+        if edit_skeleton(a) != edit_skeleton(b):         # a number, string or operator changed: a different edit
+            return False
+        return difflib.SequenceMatcher(None, a, b).ratio() >= 0.9
     shared = sum(1 for a in sig if any(alike(a, b) for b in before))
     return shared / max(len(sig), len(before))
+
+
+EDIT_TOKEN_RE = re.compile(r"'(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\"|[A-Za-z_][A-Za-z_0-9]*|\S")
+
+
+def edit_skeleton(line):
+    """A line with every name replaced by one mark: two lines with the same skeleton differ only in their names."""
+    return tuple("N" if re.fullmatch(r"[A-Za-z_][A-Za-z_0-9]*", t) else t for t in EDIT_TOKEN_RE.findall(line))
 
 
 def apply_edit(run, rel, path, old, new):
@@ -7068,6 +7106,8 @@ def apply_edit(run, rel, path, old, new):
             run.emit("status", text="The model sent a change you rejected again; Studio did not show it and asked it to change course.")
             return False, f"Not shown again: {rel}", REPEAT_NOTE.format(rel=rel)
         extra = {"hunks": hunks} if (hunks := hunks_for_approval(old, new)) else {}
+        if holds_rejected(run, rel, sig):
+            extra["warning"] = REJECTED_INSIDE.format(rel=rel, more=", with more lines added")
         run.last_parts = None
         decision, note = run.ask(kind="edit", path=rel, old=old or "", new=new, change=describe_change(old, new), **extra)
         if decision != "accept":
@@ -7870,10 +7910,15 @@ def tool_run(run, args):
         if decision != "accept":
             return False, "Command skipped", ("Plan mode is on, and the user did not allow this command, which could change things. "
                                               "Look with commands that only read, and put what you would run in your plan." + (f" Note: {note}" if note else ""))
-    elif not run.auto_commands:
-        decision, note = run.ask(kind="command", command=command)
-        if decision != "accept":
-            return False, "Command skipped", "The user rejected this command." + (f" Note: {note}" if note else "")
+    else:
+        touched = names_rejected_file(run, command)
+        if touched and looks_only(command, detect_test_command(run.ws["path"])):
+            touched = None
+        if not run.auto_commands or touched:
+            extra = {"warning": REJECTED_FILE_COMMAND.format(rel=touched)} if touched else {}
+            decision, note = run.ask(kind="command", command=command, **extra)
+            if decision != "accept":
+                return False, "Command skipped", "The user rejected this command." + (f" Note: {note}" if note else "")
     run.changed = run.changed or writes_files(command)
     result = run_online_if_allowed(run, command)
     if WAIT_COMMAND.fullmatch(command.strip()) and APP.cfg.get("turn_guard", True):
@@ -9721,6 +9766,7 @@ def compact_in_run(run, history, ctx, before):
         steps = [i for i, m in enumerate(history) if m.get("role") == "assistant" and i > start]
         start = steps[-1] if steps else len(history)
     tail = history[start:]
+    lead += requests_verbatim(run, lead, tail, int((ctx - min(8192, ctx // 4)) * 0.15 * 4 / ratio))
     new = [{"role": "user", "content": lead}]
     if not tail or tail[0].get("role") != "assistant":
         new.append({"role": "assistant", "content": "Understood. I will carry on from this summary."})
@@ -9728,6 +9774,21 @@ def compact_in_run(run, history, ctx, before):
     run.emit("compacted", before=before, after=round((prompt_chars(history)) / 4 * (run.session.get("ctx_ratio") or 1.5)),
              summary=summary, auto=True)
     return True
+
+
+def requests_verbatim(run, lead, tail, room):
+    """The user's requests that the summary replaces, in their own words, within `room` characters: a summary
+    paraphrases, and qwen3.6's turned "never reused, even after deletion" into "never reused", then reused a
+    deleted id (test 13 of 2026-11-27)."""
+    if not run.session.get("messages"):
+        return ""
+    kept = "\n".join(m["content"] for m in tail if m.get("role") == "user" and isinstance(m.get("content"), str))
+    asked = [t for t in user_requests(run) if t not in kept and t not in lead]
+    if not asked or room < 200:
+        return ""
+    each = max(200, room // len(asked))
+    rows = [f"{n}. {t if len(t) <= each else t[:each] + ' …'}" for n, t in enumerate(asked, 1)]
+    return "\n\nThe user's requests in this chat, word for word (Studio keeps them beside the summary):\n" + "\n".join(rows)
 
 
 # ---------------------------------------------------------------------------
