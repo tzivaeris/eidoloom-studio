@@ -6047,6 +6047,17 @@ def test_repeat_and_stray(c, projects, gw_port):
         check("a command naming a file with a rejected change is found; another file is not",
               sm.names_rejected_file(run, "sed -i 's/60/MINUTE/' t.py") == "t.py" and sm.names_rejected_file(run, "cat notes.txt") is None
               and sm.names_rejected_file(run, "python3 test.py") is None)
+        renamed = sm.edit_signature("import re\n\n_TS = 1\n", "import re\n\nSECONDS_IN_MINUTE = 60\n\n_TS = 1\n")
+        per = types.SimpleNamespace(rejected=[("u.py", sm.edit_signature("_F = 1\n", "_F = 1\n\nSECONDS_PER_MINUTE = 60\n"))])
+        check("the rejected constant renamed and put elsewhere is the same edit (SECONDS_IN_MINUTE, a Strata model's run)",
+              sm.repeats_rejected(per, "u.py", renamed))
+        check("another name for another thing is not (timeout = 60 after retries = 60)", not sm.repeats_rejected(
+            types.SimpleNamespace(rejected=[("v.py", sm.edit_signature("", "retries = 60\n"))]), "v.py", sm.edit_signature("", "timeout = 60\n")))
+        sm.APP.cfg["repeat_check"] = False
+        try:
+            check("without repeat_check a command naming the file asks as usual", sm.names_rejected_file(run, "cat t.py") is None)
+        finally:
+            sm.APP.cfg["repeat_check"] = True
         check("two lines that differ only in names have the same skeleton", sm.edit_skeleton("SECONDS=60") == sm.edit_skeleton("_SECONDS=60")
               and sm.edit_skeleton("x<5") != sm.edit_skeleton("x<=5"))
         check("using the constant as well is a different one", not sm.repeats_rejected(
@@ -6120,6 +6131,8 @@ def test_repeat_and_stray(c, projects, gw_port):
             sm.compact_in_run(fake2, history, 8192, 9999)
         finally:
             sm.call_model, sm.build_system_prompt = real_call, real_prompt
+        check("after a summary the reminders still list every request, the replaced ones first",
+              sm.user_requests(fake2)[:2] == ["Make todo.py. " + rule, "Add delete ID."], sm.user_requests(fake2))
         check("after a summary the user's earlier requests are kept word for word, the latest only once",
               rule in history[0]["content"] and "word for word" in history[0]["content"]
               and sum(m["content"].count("Add delete ID.") for m in history if isinstance(m.get("content"), str)) == 1,

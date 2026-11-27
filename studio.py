@@ -7067,6 +7067,8 @@ def holds_rejected(run, rel, sig):
 
 def names_rejected_file(run, command):
     """The first file with a rejected change in this run that a command names (its path, or its name as a word)."""
+    if not APP.cfg.get("repeat_check", True):
+        return None
     for rel, _ in getattr(run, "rejected", []):
         name = rel.rsplit("/", 1)[-1]
         if any(re.search(rf"(?<![\w.-]){re.escape(n)}(?![\w-])", command) for n in {rel, name}):
@@ -7082,7 +7084,7 @@ def edits_alike(sig, before):
             return True
         if edit_skeleton(a) != edit_skeleton(b):         # a number, string or operator changed: a different edit
             return False
-        return difflib.SequenceMatcher(None, a, b).ratio() >= 0.9
+        return difflib.SequenceMatcher(None, a, b).ratio() >= 0.75     # only names differ: a renamed copy, unless they are other names
     shared = sum(1 for a in sig if any(alike(a, b) for b in before))
     return shared / max(len(sig), len(before))
 
@@ -7716,14 +7718,22 @@ GREEK_ASKED_RE = re.compile(r"\bgreek\b|ελληνικ", re.I)
 
 
 def user_requests(run):
-    """The user's own words in this chat, oldest first: typed text without attachments, Studio's notes left out."""
-    out = []
-    for m in run.session["messages"]:
+    """The user's own words in this chat, oldest first: typed text without attachments, Studio's notes left out. Requests
+    a summary replaced come first, from `earlier_requests`: after qwen3.6's summary in test 13 (2026-11-27) the
+    reminders and the final check listed only the two newest requests, and the model reused a deleted id."""
+    out = list(run.session.get("earlier_requests") or [])
+    for m in run.session.get("messages") or []:
         if m.get("role") == "user" and isinstance(m.get("content"), str) and not m["content"].startswith(STUDIO_WORDS + LOOP_NOTES):
             typed = typed_part(m["content"]).strip()
-            if typed:
+            if typed and typed not in out:
                 out.append(typed)
     return out
+
+
+def keep_replaced_requests(run, every, kept):
+    """Remembers the requests a summary is about to replace (those of `every` not in the kept messages)."""
+    text = "\n".join(m["content"] for m in kept if m.get("role") == "user" and isinstance(m.get("content"), str))
+    run.session["earlier_requests"] = [t for t in every if t not in text]
 
 
 def docstring_rule(run):
@@ -9770,6 +9780,7 @@ def compact_in_run(run, history, ctx, before):
     new = [{"role": "user", "content": lead}]
     if not tail or tail[0].get("role") != "assistant":
         new.append({"role": "assistant", "content": "Understood. I will carry on from this summary."})
+    keep_replaced_requests(run, user_requests(run), tail)
     history[:] = new + tail
     run.emit("compacted", before=before, after=round((prompt_chars(history)) / 4 * (run.session.get("ctx_ratio") or 1.5)),
              summary=summary, auto=True)
@@ -10994,6 +11005,7 @@ def compact_main(run):
         if len(summary) < 40:
             run.emit("error", text="The model did not write a usable summary, so the chat was left as it was.")
             return
+        keep_replaced_requests(run, user_requests(run), [])
         run.session["messages"] = [{"role": "user", "content": COMPACT_INTRO + summary},
                                    {"role": "assistant", "content": "Understood. I will carry on from this summary."}]
         after = estimate_tokens(run.session["messages"]) + estimate_tokens(run.frozen_prompt or "")
