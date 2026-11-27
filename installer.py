@@ -399,7 +399,6 @@ LOCAL_CHOICES = {
     ],
 }
 LOCAL_KEYS = {"strata": "strata_dir", "polystrata": "polystrata_dir"}
-LOCAL_HOMES = {"strata": "", "polystrata": "terminal"}          # where server.py, .venv and the profiles are
 LOCAL_PORT = 8097
 
 
@@ -639,8 +638,9 @@ class Installer:
 
     def local_models(self, item):
         """{profile stem: model name} of the models installed in the item's checkout."""
-        home = os.path.join(self.local_folder(item), LOCAL_HOMES[item["local"]])
-        if not os.path.isfile(os.path.join(home, "serve", "server.py")):
+        folder = self.local_folder(item)
+        home = next((h for h in (os.path.join(folder, "terminal"), folder) if os.path.isfile(os.path.join(h, "serve", "server.py"))), None)
+        if not home:                    # terminal/: PolyStrata, and Strata since 0.2.16; the top: Strata before
             return {}
         out = {}
         for f in sorted(glob.glob(os.path.join(home, "strata-*.json"))):
@@ -900,8 +900,8 @@ class Installer:
         port = int((get("local_port") if get else 0) or LOCAL_PORT)
         argv = [os.path.join(folder, "setup.sh"), "--family", spec["family"], "--model", spec["model"], "--context", str(spec["context"]),
                 "--port", str(port), "--no-start", "--no-browser", "--yes"] + (["--setup"] if self.local_models(item) else [])
-        if item["local"] == "polystrata":
-            argv += ["--output", "jsonl"]
+        if '"--output"' in read(os.path.join(folder, "terminal", "setup.py")) + read(os.path.join(folder, "setup.py")):
+            argv += ["--output", "jsonl"]     # PolyStrata, and Strata from 0.2.16: its steps and downloads as JSON lines
         self.log(f"   {choice['label']}: its setup builds the engine for this card and downloads {spec['download_gb']:g} GB")
         self.run_setup(argv, folder)
         if not any(c["id"] == choice["id"] and c["installed"] for c in self.choices(item, m)):

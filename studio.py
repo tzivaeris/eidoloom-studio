@@ -2838,12 +2838,21 @@ SERVER_NAMES = {"strata": "Strata", "polystrata": "PolyStrata"}
 def local_folders():
     """[(kind, the folder holding serve/server.py, .venv and the profiles)] of the Strata and PolyStrata checkouts set."""
     out = []
-    for kind, key, sub_dir in (("strata", "strata_dir", ""), ("polystrata", "polystrata_dir", "terminal")):
+    for kind, key in (("strata", "strata_dir"), ("polystrata", "polystrata_dir")):
         path = os.path.expanduser(APP.cfg.get(key) or "") if APP is not None else ""
-        home = os.path.join(path, sub_dir) if path and sub_dir else path
-        if home and os.path.isfile(os.path.join(home, "serve", "server.py")):
+        home = local_home(path) if path else ""
+        if home:
             out.append((kind, home))
     return out
+
+
+def local_home(path):
+    """Where a Strata or PolyStrata checkout keeps serve/server.py, .venv and the profiles: terminal/ (PolyStrata, and
+    Strata since 0.2.16) or the top (Strata before), or "" when neither has the server."""
+    for home in (os.path.join(path, "terminal"), path):
+        if os.path.isfile(os.path.join(home, "serve", "server.py")):
+            return home
+    return ""
 
 
 def strata_dir():

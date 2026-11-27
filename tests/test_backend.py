@@ -3914,6 +3914,7 @@ def test_installer(c):
     os.makedirs(os.path.join(home, ".git"))
     os.makedirs(os.path.join(home, "terminal", "serve"))
     open(os.path.join(home, "terminal", "serve", "server.py"), "w").write("")
+    open(os.path.join(home, "terminal", "setup.py"), "w").write('ap.add_argument("--output", choices=("human", "jsonl"))\n')
     json.dump({"model_name": "qwen3.6-35b-a3b-ud-q4_k_m", "args": []}, open(os.path.join(home, "terminal", "strata-qwen36-ud-q4_k_m.json"), "w"))
     st = inst.status(poly, inst.machine)
     fit = {c["id"]: c for c in inst.choices(poly, inst.machine)}
@@ -3944,6 +3945,15 @@ def test_installer(c):
     except installer.Fail as e:
         again = "all installed" in str(e)
     check("with both models installed there is nothing left to add", again)
+    new_strata = os.path.join(installer.OPT, "Strata")          # Strata from 0.2.16 keeps its server and profiles in terminal/
+    os.makedirs(os.path.join(new_strata, "terminal", "serve"))
+    open(os.path.join(new_strata, "terminal", "serve", "server.py"), "w").write("")
+    json.dump({"model_name": "swift-1.5-iq3_xxs", "args": []}, open(os.path.join(new_strata, "terminal", "strata-swift-iq3_xxs.json"), "w"))
+    check("a Strata with the newer terminal/ layout is found with its model", inst.status(inst.items["strata"], inst.machine)["status"] == "installed"
+          and {c["id"]: c for c in inst.choices(inst.items["strata"], inst.machine)}["swift-iq3_xxs"]["installed"])
+    import studio as sm
+    check("and Studio starts its server from terminal/; an older Strata from its top folder",
+          sm.local_home(new_strata) == os.path.join(new_strata, "terminal") and sm.local_home(installer.OPT) == "")
     del inst.log
     installer.MANAGER = saved_manager
     installer.OPT = saved_opt
