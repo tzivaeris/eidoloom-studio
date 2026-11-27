@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=%h/.local/opt/voice
-# Only the RX 7900 XTX. The model loads when a reading needs it, only with 8 GB free on the card (otherwise the reading
+# Only the 24 GB card. The model loads when a reading needs it, only with 8 GB free on the card (otherwise the reading
 # waits), and unloads after 3 idle minutes, so ComfyUI and Strata get the card back.
 Environment=HIP_VISIBLE_DEVICES=0 HF_HUB_OFFLINE=1 VOICE_PORT=8189 VOICE_IDLE_S=180 VOICE_NEED_GB=8
 Environment=VOICE_OUT_ROOTS=%h/Projects

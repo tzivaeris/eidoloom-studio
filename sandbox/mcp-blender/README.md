@@ -6,8 +6,8 @@ Set up on 2026-11-09.
 
 - **Blender 5.2.3 LTS** in `~/.local/opt/blender-5.2.3-linux-x64` (checksum matched blender.org), command `~/.local/bin/blender`,
   menu entry `~/.local/share/applications/blender.desktop`. Remove: delete those three and `~/.config/blender/5.2`.
-- **Graphics:** the RX 550 (4 GB) drives the screen and the RX 7900 XTX is left to Strata. Blender's preferences are set to the
-  OpenGL backend, so its window draws on the RX 550, and Cycles to CPU (the RX 550 is too old for HIP, the 7900 XTX is full).
+- **Graphics:** the RX 550 (4 GB) drives the screen and the 24 GB card is left to Strata. Blender's preferences are set to the
+  OpenGL backend, so its window draws on the RX 550, and Cycles to CPU (the RX 550 is too old for HIP, the 24 GB card is full).
 - **MCP for Blender 2.0.0** (`mcp-for-blender`, formerly `blender-mcp`) in its own environment `~/.local/opt/mcp-for-blender`
   (pip, since uv is not installed). Its add-on is `~/.config/blender/5.2/scripts/addons/blender_mcp.py`, enabled in the saved
   preferences; it starts its socket server by itself when Blender opens, on localhost:9876 only.

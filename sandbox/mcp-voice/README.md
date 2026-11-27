@@ -30,7 +30,7 @@ command `python3`, argument `tools/voice_mcp.py` (full path), environment `VOICE
 
 ## Speed
 
-About 3.3 seconds of work per second of speech on the RX 7900 XTX (2026-11-11), against 0.3 on an RTX 4090 in the
+About 3.3 seconds of work per second of speech on a 24 GB AMD card (2026-11-11), against 0.3 on an RTX 4090 in the
 authors' numbers. `torch.compile` (VoxCPM's `optimize=True`) could help, but on this machine it fails to build
 Triton's helper: it needs Python's headers, `sudo apt install python3.12-dev`. Not tried since.
 

@@ -1,6 +1,6 @@
 # Engine environments, pinned
 
-The packages of each engine's Python environment as they run on Studio's first machine (RX 7900 XTX, Python 3.12,
+The packages of each engine's Python environment as they run on Studio's first machine (a 24 GB AMD card, Python 3.12,
 ROCm 7.2 wheels), used by the installer (`installer.py`, Account & settings → Tools & setup) with `pip install --no-deps`,
 so a new machine gets exactly these versions:
 

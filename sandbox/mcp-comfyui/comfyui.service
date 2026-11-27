@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=%h/.local/opt/comfyui
-# Only the RX 7900 XTX; ROCm does not support the RX 550. The Manager's fixed 9 GB Subagent pool keeps room beside Strata.
+# Only the 24 GB card; ROCm does not support the RX 550. The Manager's fixed 9 GB Subagent pool keeps room beside Strata.
 # --reserve-vram counts from what is free at the time, so a large value left ComfyUI nothing while Strata was loaded
 # (every model streamed from RAM); 1 GB keeps a little spare, and Studio's MCP server unloads ComfyUI after each picture.
 Environment=HIP_VISIBLE_DEVICES=0

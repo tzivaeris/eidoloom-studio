@@ -43,7 +43,7 @@ Set up on 2026-11-10 so Studio's models can make pictures through MCP, on this m
 - **Model:** SDXL base 1.0 (`models/checkpoints/sd_xl_base_1.0.safetensors`, 6.9 GB, Stability AI, CreativeML Open RAIL++-M,
   sha256 checked against Hugging Face). More checkpoints go in the same folder; `list_models` shows them.
   Tested: clean pictures (no black images, which newer ROCm builds give on this card), 1024x1024 in 9-16 s.
-- **Graphics memory:** ComfyUI runs on the RX 7900 XTX (`HIP_VISIBLE_DEVICES=0`; ROCm does not support the RX 550). Strata
+- **Graphics memory:** ComfyUI runs on a 24 GB AMD card (`HIP_VISIBLE_DEVICES=0`; ROCm does not support the RX 550). Strata
   normally fills that card, so the Manager's Subagent pool is set to a fixed 9 GB (Manager data file, `strata_subagent_pool`),
   and Strata gets about 15 GB, as before 2026-11-06. `--reserve-vram 15` keeps ComfyUI within about 9 GB even when Strata is
   not loaded. Set the pool back to Off in the Manager to give Strata the whole card again. ComfyUI sizes its work from the

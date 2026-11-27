@@ -46,7 +46,7 @@ The engine runs heartlib's frame loop itself (for progress and Stop), lazy-loads
 no ROCm build here) and the MP3 with ffmpeg. Like the sound engine it unloads an idle Strata when the card is short,
 and ends its process when it unloads. `MUSIC_FAKE=1` (a tone) drives the tests.
 
-First real runs (2026-11-16, RX 7900 XTX, Strata unloaded): 45 s of song in 45-48 s (writing about 0.7 s per second of
+First real runs (2026-11-16, a 24 GB AMD card, Strata unloaded): 45 s of song in 45-48 s (writing about 0.7 s per second of
 song, decoding the rest), peak up to 15.6 GB reserved, so `MUSIC_NEED_GB=16`. **No `expandable_segments`** for this
 engine: with `PYTORCH_HIP_ALLOC_CONF=expandable_segments:True` (copied from the sound engine's service) heartlib's own
 pipeline, same prompt and seed, wrote hiss and then noise instead of music, and without it music; the first samples the
@@ -84,7 +84,7 @@ systemctl --user daemon-reload && systemctl --user enable --now strata-sound
 pip then warns that MOSS pins older numpy, pillow, safetensors and others: that is expected, MOSS runs with ComfyUI's
 newer ones. The Xet downloader failed once here ("error decoding response body"), hence `HF_HUB_DISABLE_XET=1`.
 
-Notes from the first real runs (2026-11-12, RX 7900 XTX): MOSS's `save_audio` needs torchcodec, which has no ROCm build
+Notes from the first real runs (2026-11-12, a 24 GB AMD card): MOSS's `save_audio` needs torchcodec, which has no ROCm build
 here, so the engine writes the WAV with soundfile and raises the peak to -1 dB (MOSS's sounds peak around -6 to -9 dB).
 Without `MIOPEN_FIND_MODE=FAST` (in the service file) a new process spent ~100 s finding kernels before its first sound;
 with it, about 23 s for the first and 17-27 s for 5 s of sound at 100 steps (50 steps: 17 s). With everything on the card

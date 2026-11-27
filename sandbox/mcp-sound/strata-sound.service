@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=%h/.local/opt/sound
-# Only the RX 7900 XTX. The model loads when a sound needs it (11 GB free; an idle Strata is unloaded to make room) and
+# Only the 24 GB card. The model loads when a sound needs it (11 GB free; an idle Strata is unloaded to make room) and
 # unloads after 3 idle minutes, or a few seconds after making room, so Strata and ComfyUI get the card back.
 Environment=HIP_VISIBLE_DEVICES=0 HF_HUB_OFFLINE=1 SOUND_PORT=8190 SOUND_IDLE_S=180 SOUND_NEED_GB=11 TORCHDYNAMO_DISABLE=1
 Environment=SOUND_OUT_ROOTS=%h/Projects SOUND_MODEL=%h/.local/opt/sound/models/MOSS-SoundEffect-v2.0

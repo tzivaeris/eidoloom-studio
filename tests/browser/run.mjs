@@ -1168,7 +1168,7 @@ z.close()`, bigXlsx]);
   await page.waitForSelector('#cdash:not(.hidden) .cd-pic img');
   check('it opens a panel: idle, with memory and the latest picture', (await page.locator('#cdash .cd-prompt').innerText()).startsWith('Idle')
         && (await page.locator('#cdash .dash-rows').innerText()).includes('9.0 GB of 24.0 GB') && await page.locator('#cdash .cd-pic').count() === 1
-        && (await page.locator('#cdash .dash-model').innerText()).includes('ComfyUI 0.44.0 · AMD Radeon RX 7900 XTX'));
+        && (await page.locator('#cdash .dash-model').innerText()).includes('ComfyUI 0.44.0 · AMD Radeon RX 7800 XT'));
   check('a thumbnail loads through Studio and names its prompt and seed', await page.waitForFunction(() => document.querySelector('#cdash .cd-pic img')?.naturalWidth === 1).then(() => true).catch(() => false)
         && (await page.locator('#cdash .cd-pic').getAttribute('title')).includes('a red fox in the snow') && (await page.locator('#cdash .cd-pic').getAttribute('title')).includes('seed 7')
         && (await page.locator('#cdash .cd-cap').innerText()).startsWith('14 s'));

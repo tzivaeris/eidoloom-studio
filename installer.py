@@ -1296,7 +1296,7 @@ class Installer:
             if unit in MAKE_ROOM_ENV:
                 text = text.replace("[Service]\n", f"[Service]\nEnvironment={MAKE_ROOM_ENV[unit]}=0\n", 1)
         return (f"# Made by Eidoloom Studio's installer from {src}, for this machine's card. The notes below describe the\n"
-                "# machine it was first set up on (an RX 7900 XTX beside the Strata engine).\n" + text)
+                "# machine it was first set up on (a 24 GB AMD card beside the Strata engine).\n" + text)
 
     def service(self, item, here):
         unit = item["unit"]

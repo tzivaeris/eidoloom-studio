@@ -502,7 +502,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"queue_running": running if COMFY["busy"] else [], "queue_pending": [[2, "job-next", {}, {}, []]] if COMFY["busy"] else []})
         elif self.path == "/system_stats":
             self.send_json({"system": {"comfyui_version": "0.44.0", "ram_total": 64 * 2 ** 30, "ram_free": 20 * 2 ** 30},
-                            "devices": [{"name": "cuda:0 AMD Radeon RX 7900 XTX : native", "vram_total": 24 * 2 ** 30, "vram_free": 9 * 2 ** 30}]})
+                            "devices": [{"name": "cuda:0 AMD Radeon RX 7800 XT : native", "vram_total": 24 * 2 ** 30, "vram_free": 9 * 2 ** 30}]})
         elif self.path.startswith("/history/") and not self.path.endswith("/job-done"):
             self.send_json({})
         elif self.path.startswith("/history"):
