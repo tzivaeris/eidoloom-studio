@@ -2988,7 +2988,7 @@ def test_comfyui_dashboard(c, gw_port):
         last = idle["recent"][0]
         check("idle, it reports memory, the version and the default model", idle["state"] == "idle" and "current" not in idle and idle["version"] == "0.44.0"
               and idle["default_model"] == "z-image-turbo"
-              and idle["memory"]["vram_free"] == 9 * 2 ** 30 and "7900 XTX" in idle["memory"]["device"], idle)
+              and idle["memory"]["vram_free"] == 9 * 2 ** 30 and "7800 XT" in idle["memory"]["device"], idle)
         check("a finished picture comes with its prompt, size, seed, time and file",
               last["prompt"] == "a red fox in the snow" and last["size"] == "1152x896" and last["seed"] == 7 and last["seconds"] == 14.0
               and last["ok"] and last["images"] == [{"filename": "studio_00001_.png", "subfolder": "", "type": "output"}], last)
@@ -3812,7 +3812,10 @@ def test_updates(tmp):
     check("rolling back returns to the earlier commit and its earlier engine",
           git("rev-parse", "HEAD", cwd=clone) == first and "--rollback-engine" in open(os.path.join(clone, "calls.txt")).read())
     none = updates.Updates(os.path.join(tmp, "updates-none"), ROOT, {"busy": lambda: None, "config_get": {}.get})
-    check("a Strata that Studio did not install has nothing to update here", not none.check_localmodel(none.items["strata"])["available"])
+    none.check("strata")
+    check("a Strata that Studio did not install has nothing to update here, and is listed as not installed, not as a failed check",
+          not none.check_localmodel(none.items["strata"])["available"] and none.info("strata").get("absent") and not none.info("strata").get("error")
+          and next(i for i in none.public()["items"] if i["id"] == "strata")["absent"])
 
 
 def test_installer(c):
@@ -4460,7 +4463,7 @@ def test_comfyui_mcp():
                 self.reply({"queue_running": [["x"]], "queue_pending": []})
             elif path.path == "/system_stats":
                 held = 20 * 2 ** 30 if seen.get("freed", 0) < seen.get("stubborn", 0) else 0      # ignores the first /free calls
-                self.reply({"devices": [{"name": "cuda:0 AMD Radeon RX 7900 XTX", "vram_total": 24 * 2 ** 30, "vram_free": 9 * 2 ** 30,
+                self.reply({"devices": [{"name": "cuda:0 AMD Radeon RX 7800 XT", "vram_total": 24 * 2 ** 30, "vram_free": 9 * 2 ** 30,
                                          "torch_vram_total": held}]})
 
         def do_POST(self):
@@ -5527,8 +5530,8 @@ def test_model_servers(tmp):
     app = os.path.join(folder, "app")
     os.makedirs(app)
     example = json.load(open(os.path.join(ROOT, "studio.config.example.json")))
-    check("the example config is for this machine only, with no tool servers or paths of ours",
-          example["host"] == "127.0.0.1" and "comfyui_url" not in example and "updates" not in example and "/home/" not in json.dumps(example))
+    check("the example config is for this machine only, with no tool servers or paths of ours, and Updates on",
+          example["host"] == "127.0.0.1" and "comfyui_url" not in example and example.get("updates") is True and "/home/" not in json.dumps(example))
     shutil.copy(os.path.join(ROOT, "studio.config.example.json"), app)
     config = os.path.join(app, "studio.config.json")
     servers = []
@@ -5549,7 +5552,7 @@ def test_model_servers(tmp):
         check("with a wrong key the model list is empty and the gateway is not reachable",
               admin.get("/api/models")[1].get("models") == [] and admin.get("/api/config")[1]["gateway_ok"] is False)
         check("and the page never sees the key", "wrong" not in json.dumps(admin.get("/api/config")[1]))
-        check("a new install tells the page that Updates is off, so it does not ask", admin.get("/api/config")[1].get("updates") is False)
+        check("a new install has Updates on, so local models can be checked and updated", admin.get("/api/config")[1].get("updates") is True)
         stopping = servers.pop()
         stopping.terminate()
         stopping.wait(10)

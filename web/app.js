@@ -597,12 +597,16 @@ async function paneUpdates(box) {
       d.job.message ? el('div', { text: d.job.message }) : null,
       d.job.log?.length ? el('pre', { class: 'up-log', text: d.job.log.join('\n') }) : null) : null;
     const groups = d.groups.map(([g, label]) => {
-      const items = d.items.filter(i => i.group === g);
+      const items = d.items.filter(i => i.group === g && !i.absent);
       return items.length ? el('div', { class: 'ac-card up-group' }, el('div', { class: 'dlg-sub' }, el('span', { html: ico(UP_ICONS[g] || 'gear', 14) }), ' ' + label), ...items.map(row)) : null;
     });
+    const absent = d.items.filter(i => i.absent);
+    const away = absent.length ? el('details', { class: 'ac-card up-hist up-absent' }, el('summary', { text: `Not installed here (${absent.length})` }),
+      el('div', { class: 'up-note', text: 'Nothing to update until they are installed: Tools & setup installs them.' }),
+      ...absent.map(i => el('div', { class: 'up-note', text: i.name }))) : null;
     const hist = d.history.length ? el('details', { class: 'ac-card up-hist' }, el('summary', { text: `History (${d.history.length})` }),
       ...d.history.map(h => el('div', { class: 'up-last ' + (h.ok ? 'ok' : 'bad'), text: `${new Date(h.at * 1000).toLocaleString()} · ${h.name} · ${h.auto ? 'automatic ' : ''}${h.action}: ${h.message}` }))) : null;
-    box.replaceChildren(...[acHead('Updates', 'The tools Studio uses: what is installed, what is new, and updating them.', check), settings, job, ...groups, hist].filter(Boolean));
+    box.replaceChildren(...[acHead('Updates', 'The tools Studio uses: what is installed, what is new, and updating them.', check), settings, job, ...groups, away, hist].filter(Boolean));
     clearTimeout(timer);
     if (d.job && !d.job.done && box.isConnected) timer = setTimeout(refresh, 2000);
     updatesBadge(d.available);

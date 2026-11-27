@@ -169,7 +169,7 @@ class Updates:
                             "auto_ok": item["auto_ok"], "auto": self.auto_on(iid), "current": st.get("current"), "latest": st.get("latest"),
                             "available": bool(st.get("available")), "detail": st.get("detail", ""), "error": st.get("error", ""),
                             "command": st.get("command", ""), "packages": st.get("packages", []), "checked": st.get("checked"),
-                            "last": st.get("last"), "can_rollback": bool(st.get("prev"))})
+                            "last": st.get("last"), "can_rollback": bool(st.get("prev")), "absent": bool(st.get("absent"))})
             return {"settings": self.state["settings"], "items": out, "groups": GROUPS, "job": self.job,
                     "last_check": self.state.get("last_check"), "history": self.state["history"][-40:][::-1],
                     "available": sum(1 for i in out if i["available"])}
@@ -209,8 +209,39 @@ class Updates:
             self.state["last_check"] = time.time()
             self.save()
 
+    def absent(self, item):
+        """Whether the tool is not on this machine at all, so there is nothing to update (a new machine has most of them
+        missing; they were listed as failed checks)."""
+        kind = item["kind"]
+        if self.hooks.get("test") or kind in ("weblib", "apt", "fake"):
+            return False
+        if kind in ("docker", "sandbox"):
+            return not shutil.which("docker") or self.docker_local(item["image"] if kind == "docker" else "strata-sandbox:universal") is None
+        if kind == "git":
+            return not os.path.isdir(os.path.join(item["path"], ".git"))
+        if kind == "pip":
+            return not os.path.exists(item["python"])
+        if kind == "localmodel":
+            return not self.local_path(item)
+        if kind == "npx":
+            return self.npx_dir(item["package"])[1] is None
+        if kind == "npm":
+            return not os.path.exists(os.path.join(item["path"], "node_modules", item["package"], "package.json"))
+        if kind == "blender":
+            return self.blender_now()[0] is None
+        if kind == "codex":
+            return self.codex_version() is None
+        return False
+
     def check(self, iid):
         item, st = self.items[iid], self.info(iid)
+        if self.absent(item):
+            st.update({"current": "not installed here", "latest": None, "detail": "", "error": "", "available": False, "absent": True,
+                       "checked": time.time()})
+            with self.lock:
+                self.save()
+            return
+        st.pop("absent", None)
         try:
             found = getattr(self, "check_" + item["kind"])(item)
             st.update({"current": None, "latest": None, "detail": "", "command": "", "packages": [], **found, "error": "", "checked": time.time()})
