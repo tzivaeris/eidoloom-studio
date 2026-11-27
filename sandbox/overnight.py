@@ -33,7 +33,7 @@ PROMPTS = os.path.join(HERE, "prompts")
 CHECK_RUNNER = os.path.join(PROMPTS, "checks", "run.py")
 TALLY = os.path.join(HERE, "runs", "20261105-142217", "files")
 UNIVERSAL = "strata-sandbox:universal"
-MODELS = ["keystone:strata", "flint:strata", "mica:strata", "chisel:strata", "bedrock:strata", "silt:strata", "shale:strata", "basalt:strata"]
+MODELS = ["quartz:strata", "flint:strata", "mica:strata", "chisel:strata", "bedrock:strata", "silt:strata", "shale:strata", "basalt:strata"]
 ROUND_1 = ["1", "2", "3", "5", "10", "11", "12"]
 ROUND_2 = ["4", "6", "7", "8", "9", "13", "14"]
 TITLES = {"1": "Small feature", "2": "Staying in scope", "3": "False premise", "4": "Rejected edit", "5": "Impossible install", "6": "Greek with code",
@@ -720,7 +720,7 @@ def main():
 
 
 def import_batchline(runner, folder):
-    """The Keystone Batchline run that was already under way when this started."""
+    """The Batchline run that was already under way when this started."""
     started = time.time()
     checks = []
     try:

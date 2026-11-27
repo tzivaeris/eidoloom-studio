@@ -91,7 +91,7 @@ with it, about 23 s for the first and 17-27 s for 5 s of sound at 100 steps (50 
 it reserved 19.6 GB; the engine now turns on DiffSynth's per-stage offloading (`SOUND_OFFLOAD`), which brings the peak to
 about 10.6-11.3 GB (expandable segments on), so it asks for 11 GB free (`SOUND_NEED_GB`). That does not fit the 9 GB the
 Graphics card setting's Tools ready leaves, so a batch of sounds unloads an idle Strata either way, and an out-of-memory
-error makes room and retries once (Keystone's first click failed that way, with 6 GB as the old need).
+error makes room and retries once (a Strata model's first click failed that way, with 6 GB as the old need).
 
 When it unloads (3 idle minutes, or 5 s after it made room), the engine ends its process and systemd starts an empty
 one: offloaded parts sat in RAM (11.6 GB) and PyTorch's card context (1.1 GB) stayed after the model was dropped, and Strata

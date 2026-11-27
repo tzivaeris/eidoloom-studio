@@ -59,13 +59,13 @@ DEFAULT_CONFIG = {
     "port": 8790,
     "gateway": "http://127.0.0.1:8787",
     "gateway_key": "",
-    "model_names": {},            # model id -> the name people see ("swift-1.5-iq3_xxs": "Keystone"); Account & settings → Models
+    "model_names": {},            # model id -> the name people see ("swift-1.5-iq3_xxs": "Quartz"); Account & settings → Models
     "strata_idle_minutes": 15,
     "strata_dir": "",             # a Strata checkout (e.g. ~/Projects/Tools/Strata): Studio starts its server itself, one profile at a
                                   # time, on the gateway's port, and switches profiles when a chat picks another; empty: Studio does not
     "strata_tools_reserve_mib": 9216,   # Graphics card → Tools ready, when Studio starts Strata: VRAM left free for pictures and voices    # Strata's own server (no Manager): Studio unloads the model after this long without requests; 0 never            # sent as "Authorization: Bearer ..." to model servers that need one (vLLM --api-key, llama.cpp --api-key)
     "workspace_roots": ["~/Projects"],
-    "default_model": "keystone:strata",
+    "default_model": "quartz:strata",
     "max_turns": 40,
     "command_timeout_s": 120,
     "sandbox_default": False,
@@ -3234,7 +3234,7 @@ def model_server_key(req):
 
 @route("POST", "/api/admin/model_names", admin=True)
 def api_model_names(req):
-    """Names people see for models (Keystone for swift-1.5-iq3_xxs), kept in studio.config.json; an empty name removes one."""
+    """Names people see for models (Quartz for swift-1.5-iq3_xxs), kept in studio.config.json; an empty name removes one."""
     name, label = req.field("name"), req.field("label")
     if not isinstance(name, str) or not name.strip() or len(name) > 200:
         raise ApiError(400, "name is required")
@@ -7075,7 +7075,7 @@ def names_rejected_file(run, command):
 
 
 def edits_alike(sig, before):
-    """How much of two edits' added lines are the same, counting lines 90% alike as one (Keystone's third try after a
+    """How much of two edits' added lines are the same, counting lines 90% alike as one (a Strata model's third try after a
     rejection renamed SECONDS_PER_MINUTE to _SECONDS_PER_MINUTE, test 4 of 2026-11-27)."""
     def alike(a, b):
         if a == b:
@@ -7889,7 +7889,7 @@ BASH_ONLY = [(re.compile(r"<<-?\s*['\"]?[A-Za-z_]\w*['\"]?"), "a heredoc (<<)"),
 
 def powershell_problem(ws, command):
     """Why a bash-only command cannot run in a Windows PowerShell helper folder, or None. Sent back before it runs,
-    since PowerShell reads `python - <<'PY'` as a redirect and fails with MissingFileSpecification (Keystone, 2026-11-13)."""
+    since PowerShell reads `python - <<'PY'` as a redirect and fails with MissingFileSpecification (a Strata model, 2026-11-13)."""
     if not ws.get("helper") or (HELPERS.get(ws["helper"]) or {}).get("shell") != "powershell":
         return None
     for pattern, what in BASH_ONLY:
@@ -7929,7 +7929,7 @@ def tool_run(run, args):
     return result
 
 
-# A command that only waits (Start-Sleep 60; Write-Output ok). Keystone slept 45, 60, 90 and 120 s on 2026-11-13 for a
+# A command that only waits (Start-Sleep 60; Write-Output ok). A Strata model slept 45, 60, 90 and 120 s on 2026-11-13 for a
 # listmonk import that was stuck behind a database lock and would never finish.
 WAIT_COMMAND = re.compile(r"(?i)(start-sleep(\s+-(seconds|s|milliseconds|m))?\s+\d+(\.\d+)?|sleep\s+\d+(\.\d+)?[smh]?|timeout\s+(/t\s+)?\d+(\s+/nobreak)?)"
                           r"(\s*(;|&&|\|\|)\s*(write-output|write-host|echo)\b[^;&|]*)?\s*;?")
@@ -9118,7 +9118,7 @@ def browser_page():
     return (pages[0].get("title") or "", pages[0].get("url") or "") if pages else None
 
 
-# Words that point at the browser's page. Only then is the open page named: on 2026-11-18 Keystone, asked to write a
+# Words that point at the browser's page. Only then is the open page named: on 2026-11-18 a Strata model, asked to write a
 # page about dyslexia in an empty folder, read the quiz another project had left in the browser, copied its style and
 # linked to a quiz.html that was not there.
 BROWSER_WORDS_RE = re.compile(
@@ -9963,7 +9963,7 @@ ENGINE_SERVERS = {"voices", "sounds", "comfyui"}     # tool servers whose engine
 def release_engines(run):
     """After a reply whose tool calls used the voice, sound or music engine, those engines unload before the model is asked
     again, so a Strata that has to load does not meet them in memory. Several calls in one reply keep the engine loaded
-    (a batch); it is the next turn of the model that releases it. On 2026-11-18 Keystone's narration made the voice engine
+    (a batch); it is the next turn of the model that releases it. On 2026-11-18 a Strata model's narration made the voice engine
     load beside Strata on every reading and the kernel killed Strata 13 times. Config tool_engines lists the engines."""
     if not getattr(run, "engines_used", False):
         return
@@ -10294,7 +10294,7 @@ def mixed_scripts(text, greek_chat=True):
     reasons = []
     if mixed:                    # one is already wrong: «_potάμι» in a reply is a typo the reader sees
         reasons.append(f"{mixed} word{'s' if mixed > 1 else ''} mix{'' if mixed > 1 else 'es'} Greek and Latin letters ({', '.join(mixed_words(prose)[:4])})")
-    if foreign:                  # one is already wrong: «ορθογραφίας需要» (Keystone, 2026-11-11)
+    if foreign:                  # one is already wrong: «ορθογραφίας需要» (a Strata model, 2026-11-11)
         shown = "".join(dict.fromkeys(FOREIGN_RE.findall(prose)))[:8]
         reasons.append(f"{foreign} Chinese, Japanese, Korean or Cyrillic character{'s' if foreign > 1 else ''} ({shown})")
     if greeklish >= 4:
@@ -10462,7 +10462,7 @@ CODE_SPAN_RE = re.compile(r"```.*?```|`[^`\n]*`", re.S)
 # characters U+1000-U+1CFF (Myanmar, Georgian, Hangul jamo, Ethiopic, Khmer, Mongolian…) and Vietnamese U+1EA0-U+1EFF;
 # E1 itself stays, since Greek with accents (U+1F00-U+1FFF) starts with it.
 SCRIPT_BAN_LEADS = frozenset(range(0xD0, 0xE1)) | frozenset(range(0xE3, 0xEE))
-# Also the invisible zero-width space, non-joiner, direction marks and embeddings, word joiner and byte-order mark: kept from Vietnamese, Keystone wrote
+# Also the invisible zero-width space, non-joiner, direction marks and embeddings, word joiner and byte-order mark: kept from Vietnamese, a Strata model wrote
 # "n" and then hundreds of zero-width non-joiners (the joiner U+200D stays, for emoji).
 SCRIPT_BAN_CHARS = re.compile(r"[\u200b\u200c\u200e\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff\u1000-\u1cff\u1ea0-\u1eff\uf900-\ufaff\uff00-\uffef\U00020000-\U0003ffff]")
 # Text in those scripts in the conversation (a file the model may have to quote) turns the ban off for that request.
@@ -10587,7 +10587,7 @@ def drop_foreign(run, text):
 
 def drop_mixed(text):
     """The text without words that still mix Greek and Latin letters once repair_mixed has tried them, outside code
-    spans: «Τnow γράφω το README:» (Keystone, test 34 on 2026-11-26) came with a tool call, so it could not be sent
+    spans: «Τnow γράφω το README:» (a Strata model, test 34 on 2026-11-26) came with a tool call, so it could not be sent
     back, and no Greek word could be made of it."""
     found = mixed_words(text)
     if not found:
@@ -10606,7 +10606,7 @@ def drop_mixed(text):
 
 def drop_foreign_chars(run, text):
     """Text that came with tool calls, without Chinese, Japanese, Korean or Cyrillic characters, in a Greek or English
-    chat («Ο用户使用: θα ξανακάνω…», Keystone, 2026-11-15). Code spans keep theirs. The model is told by script_aside
+    chat («Ο用户使用: θα ξανακάνω…», a Strata model, 2026-11-15). Code spans keep theirs. The model is told by script_aside
     (at most three times a run); this keeps the chat readable every time."""
     if not APP.cfg["script_check"] or not isinstance(text, str) or not FOREIGN_RE.search(text):
         return text
@@ -10673,7 +10673,7 @@ ANSWER_SHORT = 300          # a finish summary up to this long, with no reply te
 def only_reads(run, name, args):
     """True for a call that only reads the folder: the reading tools, and a command that only looks (`looks_only`) or
     runs the tests, whose output may end in a pipe (`python -m unittest discover -s tests 2>&1 | tail -5`). On 2026-11-27
-    Keystone read a project, ran its tests, then finished with "Here is the complete route inventory." and no routes,
+    A Strata model read a project, ran its tests, then finished with "Here is the complete route inventory." and no routes,
     and the test run had kept answer_check from asking for them."""
     if name in READING_TOOLS:
         return True
@@ -10800,7 +10800,7 @@ def agent_loop(run):
         errors = 0
         calls = result["tool_calls"]
         if calls:
-            # A reply can hold real calls and also more written out as text (Keystone, 2026-11-15: list_files for real
+            # A reply can hold real calls and also more written out as text (a Strata model, 2026-11-15: list_files for real
             # and list_voices as <tool_call> text, twice). The text ones run too, unless they repeat a real one.
             more, rest = recover_text_tool_calls(result["content"])
             seen = {(c["function"]["name"], c["function"]["arguments"]) for c in calls}
@@ -11965,7 +11965,7 @@ def agent_main(run):
 # picker, and Studio drives the Codex CLI's own app server (`codex app-server`, JSON-RPC over stdio, the channel Codex's
 # editor extensions use) with the login saved on this machine. Studio never reads that login. Codex keeps the conversation
 # (its thread id is kept in the chat); its words, commands and edits become the chat's usual events, its requests to run
-# commands or change files become Studio's approval cards (read-only commands pass, like Keystone's), and every edit gets
+# commands or change files become Studio's approval cards (read-only commands pass, like a Strata model's), and every edit gets
 # an undo point. It runs on this machine in Codex's own sandbox, so only in folders with the Sandbox off.
 # ---------------------------------------------------------------------------
 

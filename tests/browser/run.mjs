@@ -33,7 +33,7 @@ const gwPort = await freePort(), port = await freePort(), voicePort = await free
 fs.mkdirSync(projects);
 const cfg = path.join(tmp, 'app', 'config.json');
 fs.mkdirSync(path.dirname(cfg));
-fs.writeFileSync(cfg, JSON.stringify({ codex: true, codex_command: `python3 ${path.join(ROOT, 'tests', 'mock_codex.py')}`, host: '127.0.0.1', port, voice_url: `http://127.0.0.1:${voicePort}`, gateway: `http://127.0.0.1:${gwPort}`, workspace_roots: [projects], default_model: 'keystone:strata', max_turns: 10, user_root: path.join(tmp, 'users'), comfyui_url: `http://127.0.0.1:${gwPort}`, updates: true, updates_catalog: 'test', installer_catalog: 'test' }));
+fs.writeFileSync(cfg, JSON.stringify({ codex: true, codex_command: `python3 ${path.join(ROOT, 'tests', 'mock_codex.py')}`, host: '127.0.0.1', port, voice_url: `http://127.0.0.1:${voicePort}`, gateway: `http://127.0.0.1:${gwPort}`, workspace_roots: [projects], default_model: 'quartz:strata', max_turns: 10, user_root: path.join(tmp, 'users'), comfyui_url: `http://127.0.0.1:${gwPort}`, updates: true, updates_catalog: 'test', installer_catalog: 'test' }));
 // Updates' nightly window (03:00-05:00 by default) away from now, so the safe fake item is not updated by itself
 // in the middle of the test when it runs at night
 const awayHour = (new Date().getHours() + 12) % 24;
@@ -271,9 +271,9 @@ try {
   await send('/nonsense');
   await page.waitForFunction(() => [...document.querySelectorAll('.m-note')].pop()?.innerText.includes('not a command'));
   check('an unknown command explains itself', await page.locator('.m-user').count() === 0);
-  await send('/model keystone-sub2');
-  await page.waitForFunction(() => document.querySelector('#model-select').value === 'keystone-sub2:strata', null, { timeout: 5000 }).then(() => check('/model switches model', true)).catch(() => check('/model switches model', false));
-  await send('/model keystone');
+  await send('/model quartz-sub2');
+  await page.waitForFunction(() => document.querySelector('#model-select').value === 'quartz-sub2:strata', null, { timeout: 5000 }).then(() => check('/model switches model', true)).catch(() => check('/model switches model', false));
+  await send('/model quartz');
   await send('/undo');
   await page.waitForFunction(() => [...document.querySelectorAll('.m-note')].pop()?.innerText.includes('no edit to undo'));
   await send('/commit');
@@ -1855,7 +1855,7 @@ if sys.argv[3] == '1': open(os.path.join(d, 'paper.pdf'), 'wb').write(studio.off
     check('with Codex, the Goal window offers an allowance in tokens and a ceiling on the 5-hour usage', await page.waitForSelector('.goal-cx .goal-cx-tokens', { timeout: 5000 }).then(() => true, () => false)
       && await page.locator('.goal-cx .goal-cx-pct').count() === 1);
     await page.click('.dialog button:has-text("Cancel")');
-    await page.selectOption('#model-select', 'keystone:strata');
+    await page.selectOption('#model-select', 'quartz:strata');
     check('the Codex usage strip goes away when a Studio model is picked', await page.locator('#cx-strip.hidden').count() === 1);
     await page.click('#goal-chip');
     check('and the Goal window has no Codex allowance', await page.waitForSelector('.goal-form', { timeout: 5000 }).then(() => true, () => false) && await page.locator('.goal-cx').count() === 0);
@@ -1885,7 +1885,7 @@ if sys.argv[3] == '1': open(os.path.join(d, 'paper.pdf'), 'wb').write(studio.off
       && fs.readFileSync(path.join(cx, 'calc.py'), 'utf8').includes('a + b'));
     if (process.env.STUDIO_SHOTS) await page.screenshot({ path: path.join(process.env.STUDIO_SHOTS, 'codex-done.png') });
     await page.waitForFunction(() => !document.querySelector('#agent-stop:not(.hidden)'), null, { timeout: 10000 }).catch(() => {});
-    await page.selectOption('#model-select', 'keystone:strata');
+    await page.selectOption('#model-select', 'quartz:strata');
   }
 
   section('the Open folder dialog');
@@ -1947,7 +1947,7 @@ if sys.argv[3] == '1': open(os.path.join(d, 'paper.pdf'), 'wb').write(studio.off
     const before = await page.locator('#model-select option[value]:not([value=""]):not([value="__choose"])').count();
     await page.selectOption('#model-select', '__choose');
     check('"Choose models…" at the end of the picker opens Models in Account & settings', await page.waitForSelector('.ac-pane h3:has-text("Models")', { timeout: 5000 }).then(() => true, () => false)
-      && await page.$eval('#model-select', s => s.value) === 'keystone:strata');
+      && await page.$eval('#model-select', s => s.value) === 'quartz:strata');
     await page.click('.mdl-group[data-group="codex"] button:has-text("None")');
     check('a group can be hidden from the picker', !(await groups()).includes('Codex (ChatGPT)') && (await page.textContent('#model-select option[value="__choose"]')).includes('hidden'), await groups());
     await page.locator('.mdl-row', { hasText: 'Mock Small' }).locator('input').check();

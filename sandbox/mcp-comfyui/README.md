@@ -71,8 +71,8 @@ Set up on 2026-11-10 so Studio's models can make pictures through MCP, on this m
   `~/.config/systemd/user/comfyui.service` and `~/.local/opt/comfyui`, and set the Manager's Subagent pool back to Off.
 
 ## First real run (2026-11-10)
-Keystone in a private Studio (`sandbox/runs/comfyui-20261110/`, `try.py`, `log.txt`): Strata loaded with the 9 GB pool in
+A Strata model in a private Studio (`sandbox/runs/comfyui-20261110/`, `try.py`, `log.txt`): Strata loaded with the 9 GB pool in
 35 s (16 GB of the card in use), then one `generate_image` call (1344x768, 28 steps, its own detailed prompt) made a good
-header picture in 24 s beside the loaded engine. Keystone looked at it, copied it into `assets/header.png` with `cp` and
+header picture in 24 s beside the loaded engine. A Strata model looked at it, copied it into `assets/header.png` with `cp` and
 finished, 3 turns in 79 s. It finished with a one-line summary instead of the two sentences asked for. RAM with both loaded:
 the engine 43.6 GB, ComfyUI 1.6 GB, 8 GB still available, which is why the RAM settings above matter.

@@ -1533,10 +1533,10 @@ function modelServerCard(onSaved) {
   load();
   return card;
 }
-/* An admin names a model for everyone (config model_names): Keystone for swift-1.5-iq3_xxs. An empty name goes back to
+/* An admin names a model for everyone (config model_names): Quartz for swift-1.5-iq3_xxs. An empty name goes back to
    the default. (Strata without the Manager, 2026-11-24.) */
 async function renameModel(m, after) {
-  const v = await promptBox(`Name for ${m.name}`, m.label && m.label !== m.name ? m.label : '', 'Keystone');
+  const v = await promptBox(`Name for ${m.name}`, m.label && m.label !== m.name ? m.label : '', 'Quartz');
   if (v === null || v === undefined || v === false) return;
   try {
     await POST('/api/admin/model_names', { name: m.name, label: String(v).trim() });

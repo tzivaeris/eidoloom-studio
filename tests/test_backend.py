@@ -146,7 +146,7 @@ def start_studio(tmp, cfg_path, port):
     return proc
 
 
-def run_agent(c, ws, session, message, model="keystone:strata", auto_apply=False, auto_commands=False,
+def run_agent(c, ws, session, message, model="quartz:strata", auto_apply=False, auto_commands=False,
               on_approval=None, context=None, stop_on=None):
     """Send a message and consume the SSE stream, answering approvals via on_approval(event)."""
     body = {"session": session, "ws": ws, "message": message, "model": model,
@@ -222,7 +222,7 @@ def test_voices(tmp, gw_port):
     config = os.path.join(folder, "app", "studio.config.json")
     os.makedirs(os.path.dirname(config))
     json.dump({"host": "127.0.0.1", "port": port, "gateway": f"http://127.0.0.1:{gw_port}", "workspace_roots": [projects], "user_root": os.path.join(projects, "studio-users"),
-               "default_model": "keystone:strata", "max_turns": 10, "command_timeout_s": 20, "voice_url": f"http://127.0.0.1:{engine_port}"}, open(config, "w"))
+               "default_model": "quartz:strata", "max_turns": 10, "command_timeout_s": 20, "voice_url": f"http://127.0.0.1:{engine_port}"}, open(config, "w"))
     server = start_studio(folder, config, port)
 
     def wait(client, job, timeout=30):
@@ -378,8 +378,8 @@ def test_voices(tmp, gw_port):
         text = sm.project_files_text({"path": os.path.realpath(os.path.join(projects, "book"))}, [{"kind": "file", "name": "line.wav", "path": "attachments/line.wav"},
                                                                               {"kind": "file", "name": "take (2).bin", "path": "drops/take (2).bin"}])
         check("the model gets its path in the project and its full path for tool servers", "attachments/line.wav" in text and os.path.realpath(sound) in text and "Attached file drops/take (2).bin:\n```\nagain" in text, text)
-        refused = admin.post("/api/agent/send", {"ws": ws, "session": admin.post("/api/agent/sessions", {"ws": ws})[1]["id"], "model": "keystone:strata", "message": "x", "attachments": [{"kind": "file", "name": "p", "path": "../../etc/passwd"}]})
-        ok = admin.post("/api/agent/send", {"ws": ws, "session": admin.post("/api/agent/sessions", {"ws": ws})[1]["id"], "model": "keystone:strata", "message": "use this sound",
+        refused = admin.post("/api/agent/send", {"ws": ws, "session": admin.post("/api/agent/sessions", {"ws": ws})[1]["id"], "model": "quartz:strata", "message": "x", "attachments": [{"kind": "file", "name": "p", "path": "../../etc/passwd"}]})
+        ok = admin.post("/api/agent/send", {"ws": ws, "session": admin.post("/api/agent/sessions", {"ws": ws})[1]["id"], "model": "quartz:strata", "message": "use this sound",
                                             "attachments": [{"kind": "file", "name": "line.wav", "path": "attachments/line.wav"}]})
         check("a file outside the folder is refused before a run starts, so the folder is not left busy", refused[0] in (400, 403) and ok[0] == 200, (refused[:2], ok[:2]))
         check("a sound from the folder goes with the message and is named on it", ok[1].get("saved_files") == ["attachments/line.wav"], ok[1])
@@ -456,7 +456,7 @@ def test_codex(tmp, gw_port):
     config = os.path.join(folder, "app", "studio.config.json")
     os.makedirs(os.path.dirname(config))
     json.dump({"host": "127.0.0.1", "port": port, "gateway": f"http://127.0.0.1:{gw_port}", "workspace_roots": [projects],
-               "user_root": os.path.join(projects, "studio-users"), "default_model": "keystone:strata", "max_turns": 10, "command_timeout_s": 20,
+               "user_root": os.path.join(projects, "studio-users"), "default_model": "quartz:strata", "max_turns": 10, "command_timeout_s": 20,
                "codex": True, "codex_command": f"{sys.executable} {os.path.join(ROOT, 'tests', 'mock_codex.py')}", "mcp": True}, open(config, "w"))
     server = start_studio(folder, config, port)
     sent = lambda method: [json.loads(l) for l in open(log) if json.loads(l).get("method") == method] if os.path.exists(log) else []
@@ -547,7 +547,7 @@ def test_codex(tmp, gw_port):
             return "accept", {}
         events = chat(admin, ws, sid, "please edit calc.py", decide=decide)
         kinds_asked = [(a["kind"], a.get("command") or a.get("path")) for a in asked]
-        check("a read-only command passes without asking, like Keystone's", not any(k == "command" and "cat calc.py" in (w or "") for k, w in kinds_asked)
+        check("a read-only command passes without asking, like a Strata model's", not any(k == "command" and "cat calc.py" in (w or "") for k, w in kinds_asked)
               and any(e["type"] == "tool_call" and e["args"].get("command") == "cat calc.py" for e in events), kinds_asked)
         edit = next((a for a in asked if a["kind"] == "edit"), None)
         check("Codex's patch is an edit card with the files' text before and after", edit and edit["path"].startswith("2 files")
@@ -727,7 +727,7 @@ def test_pc_folders(tmp, gw_port):
     config = os.path.join(folder, "app", "studio.config.json")
     os.makedirs(os.path.dirname(config))
     json.dump({"host": "127.0.0.1", "port": port, "gateway": f"http://127.0.0.1:{gw_port}", "workspace_roots": [projects],
-               "user_root": os.path.join(projects, "studio-users"), "default_model": "keystone:strata", "max_turns": 10, "command_timeout_s": 20}, open(config, "w"))
+               "user_root": os.path.join(projects, "studio-users"), "default_model": "quartz:strata", "max_turns": 10, "command_timeout_s": 20}, open(config, "w"))
     server = start_studio(folder, config, port)
     pc = os.path.join(folder, "their-pc", "Homework")
     os.makedirs(os.path.join(pc, "sub"))
@@ -917,7 +917,7 @@ def test_waiting_room(tmp, gw_port):
     config = os.path.join(folder, "app", "studio.config.json")
     os.makedirs(os.path.dirname(config))
     json.dump({"host": "127.0.0.1", "port": port, "gateway": f"http://127.0.0.1:{gw_port}", "workspace_roots": [projects],
-               "user_root": os.path.join(projects, "studio-users"), "default_model": "keystone:strata", "max_turns": 10, "command_timeout_s": 20,
+               "user_root": os.path.join(projects, "studio-users"), "default_model": "quartz:strata", "max_turns": 10, "command_timeout_s": 20,
                "queue_idle_s": 3, "queue_max_s": 12, "queue_offer_s": 2, "queue_warn_s": 1, "queue_presence_s": 60}, open(config, "w"))
     server = start_studio(folder, config, port)
     try:
@@ -937,7 +937,7 @@ def test_waiting_room(tmp, gw_port):
         alice, bob, carol = member("alice", "10.1.0.1"), member("bob", "10.1.0.2"), member("carol", "10.1.0.3")
 
         def send(client, message="hello"):
-            return client.post("/api/agent/send", {"session": client.sess, "ws": client.ws, "message": message, "model": "keystone:strata"})
+            return client.post("/api/agent/send", {"session": client.sess, "ws": client.ws, "message": message, "model": "quartz:strata"})
 
         def state(client):
             return client.get("/api/queue/state")[1]
@@ -1211,7 +1211,7 @@ def test_mcp(tmp, gw_port):
     config = os.path.join(folder, "app", "studio.config.json")
     os.makedirs(os.path.dirname(config))
     json.dump({"host": "127.0.0.1", "port": port, "gateway": f"http://127.0.0.1:{gw_port}", "workspace_roots": [projects],
-               "user_root": os.path.join(projects, "studio-users"), "default_model": "keystone:strata", "max_turns": 10, "command_timeout_s": 20,
+               "user_root": os.path.join(projects, "studio-users"), "default_model": "quartz:strata", "max_turns": 10, "command_timeout_s": 20,
                "mcp_call_timeout_s": 4}, open(config, "w"))
     web = subprocess.Popen([sys.executable, os.path.join(ROOT, "tests", "mock_mcp.py"), "--http", str(http_port)])
     server = start_studio(folder, config, port)
@@ -1394,7 +1394,7 @@ def test_mcp(tmp, gw_port):
         check("a call with no answer times out", results and not results[0]["ok"] and "no answer after 4s" in results[0]["output"], results)
         check("an unknown MCP tool is refused", "Unknown tool 'mcp__mock__nope'" in agent('use mcp mcp__mock__nope {}')[1][0]["output"])
 
-        status, data, _ = c.post("/api/agent/send", {"session": session, "ws": ws, "message": 'use mcp mcp__mock__slow {"seconds": 3}', "model": "keystone:strata"})
+        status, data, _ = c.post("/api/agent/send", {"session": session, "ws": ws, "message": 'use mcp mcp__mock__slow {"seconds": 3}', "model": "quartz:strata"})
         began, stopped_output = time.time(), None
         for name, ev in c.sse(f"/api/agent/stream?run={data['run']}", timeout=60):
             if name == "approval":
@@ -1674,7 +1674,7 @@ def test_improvements(c, projects, cfg_path):
     ws = c.post("/api/workspace/open", {"path": folder})[1]["workspace"]["id"]
     session = c.post("/api/agent/sessions", {"ws": ws})[1]["id"]
     seen = {}
-    status, data, _ = c.post("/api/agent/send", {"session": session, "ws": ws, "message": "Please write two parts", "model": "keystone:strata", "auto_apply": False, "auto_commands": True})
+    status, data, _ = c.post("/api/agent/send", {"session": session, "ws": ws, "message": "Please write two parts", "model": "quartz:strata", "auto_apply": False, "auto_commands": True})
     events = []
     for name, ev in c.sse(f"/api/agent/stream?run={data['run']}", timeout=60):
         events.append(ev)
@@ -1847,7 +1847,7 @@ def test_improvements(c, projects, cfg_path):
 
     def branch_run(message="Please rename the word"):
         session_id = c.post("/api/agent/sessions", {"ws": repo_ws})[1]["id"]
-        status_, data_, _ = c.post("/api/agent/send", {"session": session_id, "ws": repo_ws, "message": message, "model": "keystone:strata", "auto_apply": True, "auto_commands": True, "git_branch": True})
+        status_, data_, _ = c.post("/api/agent/send", {"session": session_id, "ws": repo_ws, "message": message, "model": "quartz:strata", "auto_apply": True, "auto_commands": True, "git_branch": True})
         return [ev for _, ev in c.sse(f"/api/agent/stream?run={data_['run']}", timeout=60)]
     events = [e for e in branch_run() if e["type"] == "git_branch"]
     check("a run starts and ends on its own branch", [e["state"] for e in events] == ["started", "finished"] and events[1]["committed"] is True and events[0]["base"] == "main", events)
@@ -2025,7 +2025,7 @@ def test_sync(c, projects, st_port, gw_port):
     check("settings start empty or readable", c.get("/api/prefs")[0] == 200)
     for key, value in (("theme", "neon"), ("auto_apply", "yes"), ("nonsense", True), ("session:../../x", "a"), ("model", "x" * 500), ("last_ws", 5)):
         check(f"bad setting refused: {key}", c.post("/api/prefs", {"key": key, "value": value})[0] == 400)
-    for key, value in (("theme", "sepia"), ("auto_commands", False), ("model", "keystone:strata"), (f"session:{ws}", "abc"), (f"git_branch:{ws}", True), ("last_ws", folder)):
+    for key, value in (("theme", "sepia"), ("auto_commands", False), ("model", "quartz:strata"), (f"session:{ws}", "abc"), (f"git_branch:{ws}", True), ("last_ws", folder)):
         check(f"setting saved: {key}", c.post("/api/prefs", {"key": key, "value": value})[0] == 200)
     check("settings come back for any window", c.get("/api/prefs")[1]["prefs"]["theme"] == "sepia")
     other = Client(st_port)
@@ -2072,7 +2072,7 @@ def test_sync(c, projects, st_port, gw_port):
     cursor = their_first["cursor"]
     news = other.get(f"/api/queue/poll?message={cursor['message']}&sync={cursor['sync']}")[1]
     check("a polling window gets nothing of another user's", not [e for e in news["events"] if e["type"] == "sync"], news)
-    polled_run = c.post("/api/agent/send", {"session": session, "ws": ws, "message": "hello there", "model": "keystone:strata", "auto_apply": True, "auto_commands": True})[1]["run"]
+    polled_run = c.post("/api/agent/send", {"session": session, "ws": ws, "message": "hello there", "model": "quartz:strata", "auto_apply": True, "auto_commands": True})[1]["run"]
     check("polling another user's run is refused", other.get(f"/api/agent/poll?run={polled_run}")[0] == 404)
     polled, after, ended = [], 0, False
     for _ in range(100):
@@ -2235,7 +2235,7 @@ def test_plan(c, projects, gw_port):
 def question_run(c, ws, message, answer):
     """Runs a message whose questions are answered by answer(event) -> (decision, answers); returns (events, refusals)."""
     run = c.post("/api/agent/send", {"session": c.post("/api/agent/sessions", {"ws": ws})[1]["id"], "ws": ws, "message": message,
-                                      "model": "keystone:strata", "auto_apply": True, "auto_commands": True})[1]["run"]
+                                      "model": "quartz:strata", "auto_apply": True, "auto_commands": True})[1]["run"]
     events, refusals = [], []
     for name, ev in c.sse(f"/api/agent/stream?run={run}", timeout=60):
         events.append(ev)
@@ -2354,7 +2354,7 @@ def test_rewind_branch(c, projects):
     check("an older chat is cut by counting its messages", status == 200 and r["text"] == "hello once more"
           and [m["content"] for m in json.load(open(path))["messages"] if m["role"] == "user"] == ["hello"], r)
     sid2 = c.post("/api/agent/sessions", {"ws": ws})[1]["id"]
-    run_id = c.post("/api/agent/send", {"session": sid2, "ws": ws, "message": "Please work slowly", "model": "keystone:strata", "auto_apply": True, "auto_commands": True})[1]["run"]
+    run_id = c.post("/api/agent/send", {"session": sid2, "ws": ws, "message": "Please work slowly", "model": "quartz:strata", "auto_apply": True, "auto_commands": True})[1]["run"]
     busy = c.post("/api/agent/session/rewind", {"ws": ws, "id": sid2, "user": 0})[0], c.post("/api/agent/session/branch", {"ws": ws, "id": sid2, "user": 0})[0]
     for _ in c.sse(f"/api/agent/stream?run={run_id}", timeout=60):
         pass
@@ -2372,7 +2372,7 @@ def test_plan_mode(c, projects):
         fh.write("# Sample\n")
     ws = c.post("/api/workspace/open", {"path": folder})[1]["workspace"]["id"]
     sid = c.post("/api/agent/sessions", {"ws": ws})[1]["id"]
-    status, data, _ = c.post("/api/agent/send", {"session": sid, "ws": ws, "message": "Please plan the rename", "model": "keystone:strata",
+    status, data, _ = c.post("/api/agent/send", {"session": sid, "ws": ws, "message": "Please plan the rename", "model": "quartz:strata",
                                                  "auto_apply": True, "auto_commands": True, "plan_mode": True})
     events, asked = [], []
     for name, ev in c.sse(f"/api/agent/stream?run={data['run']}", timeout=60):
@@ -2450,7 +2450,7 @@ def test_compact(c, projects, gw_port):
     status, r, _ = c.post("/api/agent/session/rewind", {"ws": ws, "id": sid, "user": 2})
     check("but a message after it can", status == 200 and r["text"] == "hello again" and len(json.load(open(path))["messages"]) == 2, r)
     long_text = "Please read all of this. " + "word " * 5000
-    run_id = c.post("/api/agent/send", {"session": sid, "ws": ws, "message": long_text, "model": "keystone:strata", "as_file": True, "auto_apply": True, "auto_commands": True})[1]["run"]
+    run_id = c.post("/api/agent/send", {"session": sid, "ws": ws, "message": long_text, "model": "quartz:strata", "as_file": True, "auto_apply": True, "auto_commands": True})[1]["run"]
     for _ in c.sse(f"/api/agent/stream?run={run_id}", timeout=30):
         pass
     stored = json.load(open(path))
@@ -2523,7 +2523,7 @@ def test_goal(c, projects, gw_port):
 
     def goal_run(message, sid=None, **extra):
         sid = sid or c.post("/api/agent/sessions", {"ws": ws})[1]["id"]
-        run = c.post("/api/agent/send", {"session": sid, "ws": ws, "message": message, "model": "keystone:strata", "auto_apply": True,
+        run = c.post("/api/agent/send", {"session": sid, "ws": ws, "message": message, "model": "quartz:strata", "auto_apply": True,
                                          "auto_commands": True, "goal": True, **extra})[1]["run"]
         return sid, [ev for _, ev in c.sse(f"/api/agent/stream?run={run}", timeout=90)]
     sid, events = goal_run("Please reach the goal of two parts")
@@ -2553,7 +2553,7 @@ def test_goal(c, projects, gw_port):
           and all(len(n) < 1500 and "- the book opens" in n and "in full in the message that set it" in n for n in notes)
           and brief.strip() in stored["messages"][0]["content"], [len(n) for n in notes])
     check("a round limit outside 1 to 100 is refused", c.post("/api/agent/send", {"session": c.post("/api/agent/sessions", {"ws": ws})[1]["id"], "ws": ws, "message": "x",
-          "model": "keystone:strata", "goal": True, "goal_rounds": 500})[0] == 400)
+          "model": "quartz:strata", "goal": True, "goal_rounds": 500})[0] == 400)
     r = c.post("/api/agent/goal", {"ws": ws, "id": sid3, "action": "edit", "text": "Better goal", "goal_parts": {"goal": "Better goal"}, "goal_rounds": 7})[1]
     check("editing from the window changes the parts and the limit too", r["goal"]["parts"] == {"goal": "Better goal"} and r["goal"]["max_rounds"] == 7, r)
     for action, state in (("resume", "active"), ("pause", "paused")):
@@ -2664,14 +2664,14 @@ def test_timeskip(c, projects, tmp):
 
     def skip(message="Please rename the word", during=None):
         sid = c.post("/api/agent/sessions", {"ws": ws})[1]["id"]
-        status, data, _ = c.post("/api/timeskip/start", {"ws": ws, "session": sid, "message": message, "model": "keystone:strata", "auto_commands": True})
+        status, data, _ = c.post("/api/timeskip/start", {"ws": ws, "session": sid, "message": message, "model": "quartz:strata", "auto_commands": True})
         assert status == 200, data
         if during:
             during(sid)
         events = [ev for _, ev in c.sse(f"/api/agent/stream?run={data['run']}", timeout=60)]
         return sid, data["id"], events
     busy = []
-    sid, jid, events = skip(during=lambda sid: busy.append(c.post("/api/agent/send", {"session": sid, "ws": ws, "message": "hello", "model": "keystone:strata"})[0]))
+    sid, jid, events = skip(during=lambda sid: busy.append(c.post("/api/agent/send", {"session": sid, "ws": ws, "message": "hello", "model": "quartz:strata"})[0]))
     card = next(e for e in events if e["type"] == "timeskip")
     check("the agent works on a copy: your folder is untouched", open(readme).read() == "# Sample\n" and all(e.get("copy") for e in events if e["type"] == "file_changed"), card)
     check("the card lists what differs, with the change", card["state"] == "ready" and [f["path"] for f in card["files"]] == ["README.md"]
@@ -3112,7 +3112,7 @@ def test_guide(c, projects, gw_port):
     def guided_run(message, guide_after, texts):
         """Runs `message`; once `guide_after(event)` is true, sends each of `texts` as guidance."""
         session = c.post("/api/agent/sessions", {"ws": ws})[1]["id"]
-        status, data, _ = c.post("/api/agent/send", {"session": session, "ws": ws, "message": message, "model": "keystone:strata",
+        status, data, _ = c.post("/api/agent/send", {"session": session, "ws": ws, "message": message, "model": "quartz:strata",
                                                       "auto_apply": True, "auto_commands": True})
         assert status == 200, (status, data)
         run, events, answers, sent = data["run"], [], [], False
@@ -3160,7 +3160,7 @@ def test_guide(c, projects, gw_port):
               done["reason"] == reason and "Guidance: One more thing" in (summaries[-1] + replies), (done, replies[-200:]))
 
     session = c.post("/api/agent/sessions", {"ws": ws})[1]["id"]
-    status, data, _ = c.post("/api/agent/send", {"session": session, "ws": ws, "message": "Please work slowly", "model": "keystone:strata",
+    status, data, _ = c.post("/api/agent/send", {"session": session, "ws": ws, "message": "Please work slowly", "model": "quartz:strata",
                                                   "auto_apply": True, "auto_commands": True})
     run = data["run"]
     for _name, ev in c.sse(f"/api/agent/stream?run={run}", timeout=60):
@@ -3182,7 +3182,7 @@ def test_model_loading(c, projects, gw_port, cfg_path):
 
     def poll():
         while not stop.wait(0.7):
-            seen.append(c.get("/api/model/status?model=keystone:strata")[1].get("load"))
+            seen.append(c.get("/api/model/status?model=quartz:strata")[1].get("load"))
     watcher = threading.Thread(target=poll, daemon=True)
     watcher.start()
     try:
@@ -3199,7 +3199,7 @@ def test_model_loading(c, projects, gw_port, cfg_path):
     check("the reply still arrives", "mock model" in "".join(e.get("text", "") for e in events if e["type"] == "token"), [(e["type"], str(e.get("text"))[:60]) for e in events][-8:])
     check("the dashboard status carries the progress too", any(s and s.get("percent") for s in seen), seen)
     stored = json.load(open(os.path.join(os.path.dirname(cfg_path), "data", "load_times.json")))
-    check("Studio remembers how long the load took, to pace the next bar", 5 <= stored.get("keystone:strata", 0) <= 12, stored)
+    check("Studio remembers how long the load took, to pace the next bar", 5 <= stored.get("quartz:strata", 0) <= 12, stored)
     saved = sm.APP
     sm.APP = types.SimpleNamespace(load_times={"m": 100}, load_seen={})
     try:
@@ -3384,7 +3384,7 @@ def test_attachments_and_scripts(c, projects, st_port, gw_port, cfg_path):
     ws = c.post("/api/workspace/open", {"path": folder})[1]["workspace"]["id"]
     session = c.post("/api/agent/sessions", {"ws": ws})[1]["id"]
     before = len(c_get_json(gw_port, "/_mock/requests")["requests"])
-    body = {"session": session, "ws": ws, "message": "hello, what is in this picture?", "model": "keystone:strata",
+    body = {"session": session, "ws": ws, "message": "hello, what is in this picture?", "model": "quartz:strata",
             "attachments": [{"kind": "image", "name": "shot.png", "data": PNG_1PX}, {"kind": "text", "name": "notes.md", "text": "# Notes\nremember the pelican"}]}
     status, data, _ = c.post("/api/agent/send", body)
     check("a message can carry a picture and a text file", status == 200, data)
@@ -3407,7 +3407,7 @@ def test_attachments_and_scripts(c, projects, st_port, gw_port, cfg_path):
     later = len(c_get_json(gw_port, "/_mock/requests")["requests"])
     run_agent(c, ws, session, "hello again")
     check("the picture stays in the conversation for later turns", c_get_json(gw_port, "/_mock/requests")["requests"][later]["image_parts"] != [])
-    send = lambda extra: c.post("/api/agent/send", {"session": c.post("/api/agent/sessions", {"ws": ws})[1]["id"], "ws": ws, "message": "hello", "model": "keystone:strata", **extra})
+    send = lambda extra: c.post("/api/agent/send", {"session": c.post("/api/agent/sessions", {"ws": ws})[1]["id"], "ws": ws, "message": "hello", "model": "quartz:strata", **extra})
     check("a model that cannot see pictures is refused one", send({"model": "qwen2.5-coder:3b", "attachments": [{"kind": "image", "name": "a.png", "data": PNG_1PX}]})[0] == 400)
     check("other kinds of file are refused", send({"attachments": [{"kind": "pdf", "name": "a.pdf"}]})[0] == 400)
     check("so is a picture that is not one", send({"attachments": [{"kind": "image", "name": "a.png", "data": "data:text/html;base64,PGI+"}]})[0] == 400)
@@ -3567,8 +3567,8 @@ def test_office_view(c, projects):
           and os.path.basename(os.path.expanduser("~")) not in probe.stdout.replace("letter.docx", ""), probe and probe.stdout[:300])
     codes = (c.post("/api/prefs", {"key": "minimap", "value": False})[0], c.post("/api/prefs", {"key": "minimap", "value": "no"})[0])
     check("the minimap is a setting that follows the person", codes == (200, 400), codes)
-    codes = (c.post("/api/prefs", {"key": "models_shown", "value": ["keystone:strata", "codex:gpt-6-luna"]})[0],
-             c.post("/api/prefs", {"key": "models_shown", "value": []})[0], c.post("/api/prefs", {"key": "models_shown", "value": "keystone"})[0],
+    codes = (c.post("/api/prefs", {"key": "models_shown", "value": ["quartz:strata", "codex:gpt-6-luna"]})[0],
+             c.post("/api/prefs", {"key": "models_shown", "value": []})[0], c.post("/api/prefs", {"key": "models_shown", "value": "quartz"})[0],
              c.post("/api/prefs", {"key": "models_shown", "value": [1]})[0])
     check("the models the picker shows are a list of names that follows the person", codes == (200, 200, 400, 400), codes)
     codes = (c.post("/api/prefs", {"key": "pc_names", "value": {"DESKTOP-K6F5SDF": "DEV PC"}})[0], c.post("/api/prefs", {"key": "pc_names", "value": {}})[0],
@@ -3609,7 +3609,7 @@ def test_documents(c, projects, gw_port):
     ws = c.post("/api/workspace/open", {"path": folder})[1]["workspace"]["id"]
     sid = c.post("/api/agent/sessions", {"ws": ws})[1]["id"]
     data = "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64," + base64.b64encode(open(os.path.join(folder, "budget.xlsx"), "rb").read()).decode()
-    status, r, _ = c.post("/api/agent/send", {"session": sid, "ws": ws, "message": "Τι λέει το αρχείο;", "model": "keystone:strata",
+    status, r, _ = c.post("/api/agent/send", {"session": sid, "ws": ws, "message": "Τι λέει το αρχείο;", "model": "quartz:strata",
                                               "attachments": [{"kind": "document", "name": "budget.xlsx", "data": data}]})
     check("an attached Excel file is accepted", status == 200, r)
     stored = json.load(open(os.path.join(projects, "..", "app", "data", "sessions", sid + ".json")))
@@ -3623,7 +3623,7 @@ def test_documents(c, projects, gw_port):
     make_xlsx(os.path.join(projects, "contacts export.xlsx"), {"Επαφές": [["email", "name"]] + [[f"p{i}@example.com", f"Γονέας {i}"] for i in range(5000)], "Λίστες": [["list"], ["Γονείς"]]})
     big = "data:application/octet-stream;base64," + base64.b64encode(open(os.path.join(projects, "contacts export.xlsx"), "rb").read()).decode()
     sid2 = c.post("/api/agent/sessions", {"ws": ws})[1]["id"]
-    status, r, _ = c.post("/api/agent/send", {"session": sid2, "ws": ws, "message": "Import them", "model": "keystone:strata",
+    status, r, _ = c.post("/api/agent/send", {"session": sid2, "ws": ws, "message": "Import them", "model": "quartz:strata",
                                               "attachments": [{"kind": "document", "name": "contacts export.xlsx", "data": big},
                                                               {"kind": "text", "name": "log.txt", "text": "line of a long log\n" * 15000}]})
     if status == 200:
@@ -3648,13 +3648,13 @@ def test_documents(c, projects, gw_port):
     check("the model gets the start and where the rest is", "saved it in the project as attachments/contacts export.xlsx" in first
           and "attachments/contacts export/Επαφές.csv: sheet 'Επαφές', 5001 rows" in first and "| p0@example.com | Γονέας 0 |" in first
           and "p4999@example.com" not in first and len(first) < 60000 and stored["events"][0].get("saved_files") == saved, first[:600])
-    status, r, _ = c.post("/api/agent/send", {"session": sid2, "ws": ws, "message": "Again", "model": "keystone:strata",
+    status, r, _ = c.post("/api/agent/send", {"session": sid2, "ws": ws, "message": "Again", "model": "quartz:strata",
                                               "attachments": [{"kind": "document", "name": "contacts export.xlsx", "data": big}]})
     if status == 200:
         c.post("/api/agent/stop", {"run": r["run"]})
         time.sleep(1)
     check("the same name again gets a new file, not over the first", "attachments/contacts export (2).xlsx" in (r or {}).get("saved_files", []), r)
-    bad = c.post("/api/agent/send", {"session": sid, "ws": ws, "message": "x", "model": "keystone:strata",
+    bad = c.post("/api/agent/send", {"session": sid, "ws": ws, "message": "x", "model": "quartz:strata",
                                      "attachments": [{"kind": "document", "name": "virus.exe", "data": "data:x;base64,AAAA"}]})
     check("only document types are accepted as documents", bad[0] == 400, bad[1])
     run = types.SimpleNamespace(ws={"path": os.path.realpath(folder), "id": ws}, owner="admin")
@@ -4522,7 +4522,7 @@ def test_comfyui_mcp():
             server.shutdown()
         return [m["result"] for m in map(json.loads, out.splitlines()) if m["id"] > 1]
     json.dump({"default_model": "z-image-turbo"}, open(settings, "w"))
-    loaded_strata = [{"name": "keystone:strata", "runtime": "strata", "size_vram": 15 * 2 ** 30, "details": {"format": "strata"}}]
+    loaded_strata = [{"name": "quartz:strata", "runtime": "strata", "size_vram": 15 * 2 ** 30, "details": {"format": "strata"}}]
     batch = swap_run(("generate_images", {"model": "qwen-image", "pictures": [{"prompt": "a lighthouse"}, {"prompt": "a harbour", "width": 1664, "height": 928}]}),
                      ollama=loaded_strata)[0]
     texts = [c["text"] for c in batch["content"] if c["type"] == "text"]
@@ -4694,7 +4694,7 @@ def test_engine_release():
     try:
         sm.APP = types.SimpleNamespace(cfg={"tool_engines": [f"http://127.0.0.1:{engine.server_address[1]}"], "voice_url": ""})
         events = []
-        run = types.SimpleNamespace(engines_used=False, model="keystone:strata", stop=False, emit=lambda kind, **kw: events.append(kind))
+        run = types.SimpleNamespace(engines_used=False, model="quartz:strata", stop=False, emit=lambda kind, **kw: events.append(kind))
         sm.release_engines(run)
         check("without an engine call this turn, nothing is unloaded", state["unloads"] == 0 and state["loaded"])
         run.engines_used = True
@@ -4704,7 +4704,7 @@ def test_engine_release():
         run.model = "codex:gpt-6.1-sol"
         sm.release_engines(run)
         check("but not for Codex, which thinks elsewhere", state["unloads"] == 1 and state["loaded"])
-        state["busy"], run.engines_used, run.model = "job", True, "keystone:strata"
+        state["busy"], run.engines_used, run.model = "job", True, "quartz:strata"
         sm.release_engines(run)
         check("and never while an engine is working for someone", state["unloads"] == 1)
         check("the voice, sound and music servers count as engines", {"voices", "sounds", "comfyui"} <= sm.ENGINE_SERVERS)
@@ -4814,7 +4814,7 @@ def test_video_mcp(tmp):
              call(8, "video_frames", {"path": out, "times": [1, 4]}),
              call(9, "render_video", {"timeline": {"clips": [{"src": "still.png", "duration": 1}]}, "output": os.path.join(root, "video", "rel.mp4")}),
              call(10, "render_video", {"timeline": {"clips": [{"src": "../../etc/passwd"}]}, "output": os.path.join(root, "x.mp4")}),
-             # Keystone's trailer on 2026-11-12: a zoomed picture, a cut, then a dissolve (concat's timebase broke xfade).
+             # A Strata model's trailer on 2026-11-12: a zoomed picture, a cut, then a dissolve (concat's timebase broke xfade).
              call(11, "render_video", {"timeline": {"clips": [{"src": "still.png", "duration": 1, "effects": [{"type": "zoom"}]},
                                                               {"src": "still.png", "duration": 1, "effects": [{"type": "fade_in"}]},
                                                               {"src": "still.png", "duration": 1, "transition": {"type": "dissolve", "duration": 0.4}}]},
@@ -4845,7 +4845,7 @@ def test_video_mcp(tmp):
     check("files outside the allowed folders are refused", replies[6]["result"]["isError"] and "outside the folders" in replies[6]["result"]["content"][0]["text"])
     check("an unknown effect is refused, naming the ones there are", replies[7]["result"]["isError"] and "fade_in" in replies[7]["result"]["content"][0]["text"])
     check("frames can be taken from any video", sum(c["type"] == "image" for c in replies[8]["result"]["content"]) == 2)
-    check("a relative path counts from the output's folder or one above it (Keystone wrote assets/... in a trailer)",
+    check("a relative path counts from the output's folder or one above it (a Strata model wrote assets/... in a trailer)",
           not replies[9]["result"]["isError"] and os.path.isfile(os.path.join(root, "video", "rel.mp4")), replies[9]["result"]["content"][0]["text"][:300])
     check("a cut followed by a transition renders", not replies[11]["result"]["isError"], replies[11]["result"]["content"][0]["text"][:400])
     check("but cannot climb out of the allowed folders", replies[10]["result"]["isError"] and "outside the folders" in replies[10]["result"]["content"][0]["text"],
@@ -5084,7 +5084,7 @@ def test_typed_commands(c, projects, st_port, cfg_path):
     run_agent(c, ws, session, "hello again")
     second = [m["content"] for m in stored()["messages"] if m["role"] == "user"][-1]
     check("it hears only once", sm.typed_part(second) == "hello again" and "hello-42" not in second, second[:200])
-    body = {"session": session, "ws": ws, "model": "keystone:strata", "auto_apply": True, "auto_commands": True}
+    body = {"session": session, "ws": ws, "model": "quartz:strata", "auto_apply": True, "auto_commands": True}
     status, data, _ = c.post("/api/agent/send", {**body, "message": "hello, see this", "mentions": ["note.txt", "../outside-note.txt", "/etc/passwd", 5, "missing.txt"]})
     for _ in c.sse(f"/api/agent/stream?run={data['run']}", timeout=30):
         pass
@@ -5257,7 +5257,7 @@ def test_accounts(c, tmp, sample, st_port):
     check("bob cannot delete alice's chat", bob.post("/api/agent/session/delete", {"id": asess})[0] == 404)
     check("admin cannot read alice's chat", c.get(f"/api/agent/session?id={asess}")[0] == 404)
     c.post("/api/queue/release", {})
-    s, d, _ = alice.post("/api/agent/send", {"session": asess, "ws": aws, "message": "Rename Sample", "model": "keystone:strata"})
+    s, d, _ = alice.post("/api/agent/send", {"session": asess, "ws": aws, "message": "Rename Sample", "model": "quartz:strata"})
     arun = d["run"]
     check("bob cannot join alice's run", bob.get(f"/api/agent/stream?run={arun}")[0] == 404)
     check("bob cannot stop alice's run", bob.post("/api/agent/stop", {"run": arun})[0] == 404)
@@ -5564,9 +5564,9 @@ def test_strata_direct(tmp):
         check("Strata's own server is found: its model is a Strata model that takes tools and pictures, with a readable name",
               len(models) == 1 and m["name"] == "swift-1.5-iq3_xxs" and m["kind"] == "strata" and m["tools"] and m["vision"]
               and m["label"] == "Swift 1.5 IQ3_XXS (Strata)", models)
-        s, d, _ = admin.post("/api/admin/model_names", {"name": "swift-1.5-iq3_xxs", "label": "Keystone"})
-        check("an admin names it Keystone, for everyone, in the config", s == 200 and admin.get("/api/models")[1]["models"][0]["label"] == "Keystone"
-              and json.load(open(config))["model_names"] == {"swift-1.5-iq3_xxs": "Keystone"}, d)
+        s, d, _ = admin.post("/api/admin/model_names", {"name": "swift-1.5-iq3_xxs", "label": "Quartz"})
+        check("an admin names it Quartz, for everyone, in the config", s == 200 and admin.get("/api/models")[1]["models"][0]["label"] == "Quartz"
+              and json.load(open(config))["model_names"] == {"swift-1.5-iq3_xxs": "Quartz"}, d)
         bob = Client(port)
         bob.post("/api/auth/signup", {"token": admin.post("/api/admin/invites", {})[1]["token"], "username": "bob", "password": "member password"})
         check("only admins name models", bob.post("/api/admin/model_names", {"name": "swift-1.5-iq3_xxs", "label": "Mine"})[0] == 403)
@@ -5737,7 +5737,7 @@ def main():
     os.environ["PATH"] = stub_bin + os.pathsep + os.environ["PATH"]
     with open(cfg_path, "w") as fh:
         json.dump({"host": "127.0.0.1", "port": st_port, "gateway": f"http://127.0.0.1:{gw_port}",
-                   "workspace_roots": [projects], "default_model": "keystone:strata",
+                   "workspace_roots": [projects], "default_model": "quartz:strata",
                    "max_turns": 10, "command_timeout_s": 20, "user_root": os.path.join(projects, "studio-users"), "installer_catalog": "test",
                    "strata_vocab": make_vocab(tmp)}, fh)
     gw = subprocess.Popen([sys.executable, os.path.join(ROOT, "mock_gateway.py"), str(gw_port)],
@@ -5928,7 +5928,7 @@ def test_script_ban(c, projects, gw_port):
     check("not when the conversation already holds such text, which the model may have to quote", sent and not any(r["logit_bias"] for r in sent))
     saved, sm.APP = sm.APP, types.SimpleNamespace(cfg={}, gateway_kind="manager", strata_models=set())
     try:
-        run = types.SimpleNamespace(model="keystone:strata")
+        run = types.SimpleNamespace(model="quartz:strata")
         note = {"role": "user", "content": sm.SCRIPT_NOTE.format(what="reply", why="2 Chinese characters (更正)")}
         check("Studio's own send-back note, which names Chinese and quotes the characters, does not turn the ban off",
               sm.wants_script_ban(run, [{"role": "user", "content": "Γράψε τα σχόλια στα ελληνικά"}, {"role": "assistant", "content": "Έγινε 更正"}, note]))
@@ -6191,15 +6191,15 @@ def test_all(c, tmp, sample, outside, gw_port, cfg_path, st_port):
     names = [m["name"] for m in d["models"]]
     labels = {m["name"]: m["label"] for m in d["models"]}
     check("model order: Strata first, Ollama A-Z",
-          names == ["keystone-sub2:strata", "keystone:strata", "qwen3.8-flash-next:125b-strata",
+          names == ["quartz-sub2:strata", "quartz:strata", "qwen3.8-flash-next:125b-strata",
                     "llama3.2:3b", "qwen2.5-coder:3b"], names)
-    check("labels", labels.get("keystone:strata") == "Keystone (Strata)"
-          and labels.get("keystone-sub2:strata") == "Keystone (Strata) + 2 GB subagent pool"
+    check("labels", labels.get("quartz:strata") == "Quartz (Strata)"
+          and labels.get("quartz-sub2:strata") == "Quartz (Strata) + 2 GB subagent pool"
           and labels.get("qwen3.8-flash-next:125b-strata") == "Strata default profile", labels)
     by = {m["name"]: m for m in d["models"]}
     check("hidden: -full/-sub4 and long profile", not any("-full" in n or "-sub4" in n or "swift" in n for n in names))
-    check("tools flags", by["keystone:strata"]["tools"] is True and by["llama3.2:3b"]["tools"] is False
-          and by["qwen2.5-coder:3b"]["tools"] is True and by["keystone:strata"]["kind"] == "strata"
+    check("tools flags", by["quartz:strata"]["tools"] is True and by["llama3.2:3b"]["tools"] is False
+          and by["qwen2.5-coder:3b"]["tools"] is True and by["quartz:strata"]["kind"] == "strata"
           and by["llama3.2:3b"]["kind"] == "ollama")
 
     print("workspaces")
@@ -6431,7 +6431,7 @@ def test_all(c, tmp, sample, outside, gw_port, cfg_path, st_port):
     check("session persists events incl. user message, tokens merged",
           types[0] == "user" and "done" == types[-1] and "approval" in types
           and all(not (a == b and a in ("token", "thinking")) for a, b in zip(types, types[1:])), types)
-    check("session has model", d["model"] == "keystone:strata")
+    check("session has model", d["model"] == "quartz:strata")
     s, d, _ = c.get(f"/api/agent/sessions?ws={ws}")
     check("session list: title is first 60 chars of first message",
           d["sessions"][0]["title"] == "Rename the word Sample in the README" and d["sessions"][0]["id"] == sess, d)
@@ -6453,10 +6453,10 @@ def test_all(c, tmp, sample, outside, gw_port, cfg_path, st_port):
     check("rejected edit did not write", open(readme).read() == original and not [e for e in ev2 if e["type"] == "file_changed"])
     check("rejected edit still reaches done", ev2[-1]["type"] == "done")
 
-    s, d, _ = c.post("/api/agent/send", {"session": sess, "ws": ws, "message": "again", "model": "keystone:strata"})
+    s, d, _ = c.post("/api/agent/send", {"session": sess, "ws": ws, "message": "again", "model": "quartz:strata"})
     run3 = d["run"]
     check("send while chatting continues the session (run id)", s == 200)
-    s2, d2, _ = c.post("/api/agent/send", {"session": sess, "ws": ws, "message": "second", "model": "keystone:strata"})
+    s2, d2, _ = c.post("/api/agent/send", {"session": sess, "ws": ws, "message": "second", "model": "quartz:strata"})
     check("second send in same workspace -> 409", s2 == 409, d2)
     check("active run reported for reattach", c.get(f"/api/agent/active?ws={ws}")[1].get("run") == run3 and c.get(f"/api/agent/active?ws={ws}")[1].get("session") == sess)
     stopped_events = []
@@ -6470,7 +6470,7 @@ def test_all(c, tmp, sample, outside, gw_port, cfg_path, st_port):
           and stopped_events[-1]["reason"] == "stopped", [e for e in stopped_events][-3:])
     check("stopped run did not change the file", open(readme).read() == original)
     check("workspace free again after stop", c.get(f"/api/agent/active?ws={ws}")[1].get("run") is None)
-    s, d, _ = c.post("/api/agent/send", {"session": sess, "ws": ws, "message": "again", "model": "keystone:strata"})
+    s, d, _ = c.post("/api/agent/send", {"session": sess, "ws": ws, "message": "again", "model": "quartz:strata"})
     live_run, live_events, switched = d["run"], [], False
     for name, ev in c.sse(f"/api/agent/stream?run={live_run}"):
         live_events.append(ev)
@@ -6542,7 +6542,7 @@ def test_all(c, tmp, sample, outside, gw_port, cfg_path, st_port):
         check(f"install command gets internet: {cmd}", install(cmd) is not None)
     for cmd in ("npm test", "npm run build", "python app.py", "curl example.com", "git pull", "go test ./...", "cargo test", "echo pip", "ls install"):
         check(f"other command stays offline: {cmd}", install(cmd) is None)
-    state = lambda strata, loaded=(), streaming=False, active=False, model="keystone:strata": studio_module.model_state(model, strata, list(loaded), streaming, active)[:2]
+    state = lambda strata, loaded=(), streaming=False, active=False, model="quartz:strata": studio_module.model_state(model, strata, list(loaded), streaming, active)[:2]
     up = {"running": True, "health": {"loaded": True}}
     check("state: not loaded", state({"running": False}) == ("off", "Not loaded"))
     check("state: loading", state({"running": True, "health": {"loaded": False}, "job": {"kind": "start", "state": "running", "message": "[strata] loading"}}) == ("load", "Loading"))
@@ -6551,7 +6551,7 @@ def test_all(c, tmp, sample, outside, gw_port, cfg_path, st_port):
     check("state: generating", state(up, streaming=True) == ("work", "Generating"))
     check("state: reading prompt", state({**up, "lifecycle": {"active_requests": 1}, "job": {"kind": "start", "state": "running", "message": "[strata] reading the prompt: 1 of 2"}}) == ("work", "Reading prompt"))
     check("state: ollama model", state({}, model="llama3:8b") == ("off", "Not loaded") and state({}, [{"name": "llama3:8b"}], model="llama3:8b") == ("idle", "Loaded"))
-    s, d, _ = c.get("/api/model/status?model=keystone:strata")
+    s, d, _ = c.get("/api/model/status?model=quartz:strata")
     check("a plain Ollama without the Manager's endpoints is not called offline", s == 200 and d["state"] == "off" and d["label"] == "Not loaded"
           and d["metrics"] is None, d)
     s, _, _ = c.get("/api/model/status", cookie=False)
@@ -6601,7 +6601,7 @@ def test_all(c, tmp, sample, outside, gw_port, cfg_path, st_port):
                           on_approval=accept_all)
     check("repeat nudge sent, and the turn guard stops the run after the same call three more times", ev8[-1]["reason"] == "stuck" and ev8[-1]["turns"] == 4
           and "same call was made 4 times" in ev8[-1]["stuck"] and any(r["nudged"] for r in mock()), ev8[-1])
-    run9, ev9 = run_agent(c, ws, sess, "hello", model="keystone:strata", on_approval=accept_all)
+    run9, ev9 = run_agent(c, ws, sess, "hello", model="quartz:strata", on_approval=accept_all)
     sess_file = json.load(open(os.path.join(tmp, "app", "data", "sessions", sess + ".json")))
     check("session file holds model messages (no system prompt)",
           sess_file["messages"][0]["role"] == "user" and all(m["role"] != "system" for m in sess_file["messages"])
@@ -6626,9 +6626,9 @@ def test_all(c, tmp, sample, outside, gw_port, cfg_path, st_port):
     small = [{"role": "tool", "tool_call_id": "1", "content": "z" * 100} for _ in range(10)]
     mod.trim_context(small)
     check("no trimming below 90 000 chars", all(m["content"] == "z" * 100 for m in small))
-    check("hide rules", mod.strata_hidden("keystone-full:strata") and mod.strata_hidden("a-sub6:strata")
+    check("hide rules", mod.strata_hidden("quartz-full:strata") and mod.strata_hidden("a-sub6:strata")
           and mod.strata_hidden("qwen3.8-flash-next:125b-strata-swift-iq3-xxs")
-          and not mod.strata_hidden("keystone-sub2:strata") and not mod.strata_hidden("qwen3.8-flash-next:125b-strata"))
+          and not mod.strata_hidden("quartz-sub2:strata") and not mod.strata_hidden("qwen3.8-flash-next:125b-strata"))
 
     print("persistence across restart")
     # a second instance on the same config/data dir must accept the first instance's login cookie

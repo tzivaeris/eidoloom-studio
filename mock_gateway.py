@@ -47,8 +47,8 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 TAGS = [
-    ("keystone:strata", 9_000_000_000), ("keystone-sub2:strata", 9_000_000_000),
-    ("keystone-full:strata", 9_000_000_000), ("keystone-sub4:strata", 9_000_000_000),
+    ("quartz:strata", 9_000_000_000), ("quartz-sub2:strata", 9_000_000_000),
+    ("quartz-full:strata", 9_000_000_000), ("quartz-sub4:strata", 9_000_000_000),
     ("qwen3.8-flash-next:125b-strata", 40_000_000_000),
     ("qwen3.8-flash-next:125b-strata-swift-iq3-xxs", 40_000_000_000),
     ("qwen2.5-coder:3b", 1_900_000_000), ("llama3.2:3b", 2_000_000_000),
@@ -149,12 +149,12 @@ def plan(req):
             return "", 'Let me look.\n```json\n{"name": list_files, "arguments": {" path": "."}}\n```', None
         return "", "Done.", ("finish", {"summary": "Listed the folder."})
     if "ξένοι χαρακτήρες" in user_text:
-        # Greek words with Chinese ones between, written beside a tool call (Keystone, 2026-11-15)
+        # Greek words with Chinese ones between, written beside a tool call (a Strata model, 2026-11-15)
         if tools_seen == 0:
             return "", "Ο用户使用: θα κοιτάξω τα αρχεία του φακέλου.", ("list_files", {"path": "."})
         return "", "Έτοιμο.", ("finish", {"summary": "Κοίταξα τον φάκελο."})
     if "mixed call" in user_text.lower():
-        # a real call and another written as text in the same reply (Keystone, 2026-11-15)
+        # a real call and another written as text in the same reply (a Strata model, 2026-11-15)
         if tools_seen == 0:
             return "", "<tool_call>\n<function=search>\n<parameter=query>\nSample\n</parameter>\n</function>\n</tool_call>", ("list_files", {"path": "."})
         return "", "Done.", ("finish", {"summary": "Listed and searched."})
@@ -184,7 +184,7 @@ def plan(req):
             return "", "Using the tool.", (words[2], json.loads(words[3]) if len(words) > 3 else {})
         return "", "Done.", ("finish", {"summary": "Tool said: " + str(messages[-1].get("content", ""))[:500]})
     if "chinese aside" in user_text.lower():
-        # Writes Chinese inside Greek beside a tool call, as Keystone did; then says whether a note followed the call's result.
+        # Writes Chinese inside Greek beside a tool call, as a Strata model did; then says whether a note followed the call's result.
         if tools_seen == 0:
             return "", "Δύο ευρήματα ορθογραφίας需要 διόρθωσης, η σωστή αόριστος形态. Κοιτάζω τα αρχεία.", ("list_files", {"path": "."})
         noted = any("Do not write it again" in str(m.get("content", "")) for m in messages if m["role"] == "user")
@@ -195,7 +195,7 @@ def plan(req):
         bad = ("To programma trexei kanonika kai ta tests pernane ola. I selida deixnei ti lexi gia tria defterolepta kai meta tin krivei. "
                "O xristis grafei tin apantisi kai vlepei to apotelesma me to skor. Den vrika kanena provlima stin ylopoiisi.")
         good = "Το πρόγραμμα τρέχει κανονικά και τα tests περνούν όλα. Η σελίδα δείχνει τη λέξη για τρία δευτερόλεπτα και μετά την κρύβει."
-        if "twice" in user_text.lower():        # after the one send-back, a summary with Chinese inside, as Keystone wrote
+        if "twice" in user_text.lower():        # after the one send-back, a summary with Chinese inside, as a Strata model wrote
             return "", "Τέλος.", ("finish", {"summary": good.replace("τρέχει", "τρέχει写了") if noted else bad})
         if "finish" in user_text.lower():
             return "", "Τέλος.", ("finish", {"summary": good if noted else bad})
