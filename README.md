@@ -320,6 +320,15 @@ in Studio's Live tab. On Windows the helper has its own window and a tray icon, 
 - [SPEC.md](SPEC.md): the API and event contract between the page and the server.
 - [CHANGELOG.md](CHANGELOG.md): what changed in each release.
 
+## Also by the author
+
+- [Dev Server Deck](https://devserverdeck.com): a hosted service that controls your development machines from a
+  browser or phone (projects, logs, ports, tunnels, Git, terminal), with a coding-agent workspace. In free beta.
+- [Cloakspire](https://cloakspire.co): an offline secrets and password vault for developers, in one encrypted file,
+  with no account and no cloud.
+
+Eidoloom Studio stays free and self-hosted, and needs neither.
+
 ## Licence
 
 Eidoloom Studio is free software under the GNU Affero General Public License, version 3 ([LICENSE](LICENSE)).
