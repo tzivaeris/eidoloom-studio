@@ -316,7 +316,7 @@ class Runner:
                   "calls": sum(len(r.get("calls", [])) for r in replies), "progress_calls": sum(r.get("progress", 0) for r in replies),
                   "prompt_max": max([r.get("prompt_max", 0) for r in replies] or [0]), "errors": sum(len(r.get("errors", [])) for r in replies),
                   "attempts": attempt, "engine": engine, "checks": [{"label": c[0], "ok": c[1], "detail": str(c[2])[:300]} for c in checks],
-                  "finished_at": time.time(), "reply": reply_text[:1500]}
+                  "finished_at": time.time(), "reply": reply_text[:20000]}
         self.save(result)
         cleanup(work, ws["id"], self)
         return result

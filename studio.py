@@ -7043,9 +7043,18 @@ def repeats_rejected(run, rel, sig):
     if not sig or not APP.cfg.get("repeat_check", True):
         return False
     for path, before in run.rejected:
-        if path == rel and before and len(sig & before) / len(sig | before) >= 0.8:
+        if path == rel and before and edits_alike(sig, before) >= 0.8:
             return True
     return False
+
+
+def edits_alike(sig, before):
+    """How much of two edits' added lines are the same, counting lines 90% alike as one (Keystone's third try after a
+    rejection renamed SECONDS_PER_MINUTE to _SECONDS_PER_MINUTE, test 4 of 2026-11-27)."""
+    def alike(a, b):
+        return a == b or difflib.SequenceMatcher(None, a, b).ratio() >= 0.9
+    shared = sum(1 for a in sig if any(alike(a, b) for b in before))
+    return shared / max(len(sig), len(before))
 
 
 def apply_edit(run, rel, path, old, new):
@@ -10281,7 +10290,7 @@ def script_aside(run, text):
     and the note follows their results so the model writes clean Greek from then on, at most MAX_SCRIPT_ASIDES a run."""
     if not APP.cfg["script_check"] or run.script_asides >= MAX_SCRIPT_ASIDES or not (text or "").strip():
         return ""
-    why = script_reasons(run, text)
+    why = script_reasons(run, text, aside=True)
     if not why:
         return ""
     run.script_asides += 1
@@ -10356,7 +10365,7 @@ def drop_stray_latin(run, text):
     return re.sub(r"([,;:·])(?:\s*[,;:·])+", r"\1", clean)
 
 
-def script_reasons(run, text):
+def script_reasons(run, text, aside=False):
     language = asked_language(run.session["messages"], (run.session.get("goal") or {}).get("text")) or user_language(run.session["messages"])
     prose = re.findall(r"[^\W\d_]+", NOT_PROSE_RE.sub(" ", text or ""))
     greek = sum(1 for w in prose if GREEK_RE.search(w) and not LATIN_RE.search(w))
@@ -10367,7 +10376,9 @@ def script_reasons(run, text):
     if language == "English" and greek >= 15 and greek > len(prose) / 2:
         reasons.append("it is in Greek, but the user writes English")
     latin = sum(1 for w in prose if LATIN_RE.search(w) and not GREEK_RE.search(w))
-    if language == "Greek" and latin >= 12 and latin > 2 * greek:      # qwen3.8, test 14 of 2026-11-26
+    # qwen3.8, test 14 of 2026-11-26; between tool calls the asides are short ("The pattern is clear. I'll add a … class",
+    # qwen3.6 and qwen3.8, test 14 of 2026-11-27), so a lower bar there.
+    if language == "Greek" and (latin >= 6 and latin > 4 * greek if aside else latin >= 12 and latin > 2 * greek):
         reasons.append("it is in English, but the user writes Greek")
     stray = [w for _, w in stray_latin(run, text)] if language == "Greek" else []
     if stray:

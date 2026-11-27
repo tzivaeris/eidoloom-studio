@@ -80,12 +80,12 @@ cache, and the rest):
 | off | 97 of 120 | 13 | 263 of 279 (94%) | 9.6 turns, 1.1 min |
 | on | 104 of 120 | 2 | 277 of 279 (99%) | 10.4 turns, 1.2 min |
 
-The rest needed a person to judge the answer. The guards now include a ban on Chinese, Japanese, Korean, Cyrillic and
+The rest needed a person to judge the answer; judged by hand, 115 of 120 passed with the guards and 104 without. The guards now include a ban on Chinese, Japanese, Korean, Cyrillic and
 other scripts the chat does not use, repairs of words mixing Greek and Latin letters, checks of the user's earlier rules
 and a check for a finish that leaves the answer out. The two tests that still failed were run again five times after
 a fix: with the guards 10 of 10 passed their checks, without them 6 of 10. On two smaller Qwen models with a 32K context
 window, long sessions ran out of room and ended on empty replies; Studio now shortens and, near the limit, summarizes
-the chat during the run, and those sessions finished. One model and a few repetitions is a small sample, so read it as
+the chat during the run, and those sessions finished: over all 40 tests no guarded run ran out of room, and qwen3.6:32k went from 27 to 30 passed. One model and a few repetitions is a small sample, so read it as
 a direction, not a score.
 
 ## Screenshots

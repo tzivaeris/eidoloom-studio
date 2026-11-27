@@ -6027,6 +6027,8 @@ def test_repeat_and_stray(c, projects, gw_port):
         run = types.SimpleNamespace(rejected=[("t.py", first)])
         check("moved one line lower with a comment, it is the same edit", sm.repeats_rejected(
             run, "t.py", sm.edit_signature(old, "import time\n\n# seconds in a minute\nMINUTE = 60\ndef parse_ts(x):\n    return x * 60\n")))
+        check("renamed with an underscore, it is the same edit", sm.repeats_rejected(
+            run, "t.py", sm.edit_signature(old, "import time\n_MINUTE = 60\n\ndef parse_ts(x):\n    return x * 60\n")))
         check("using the constant as well is a different one", not sm.repeats_rejected(
             run, "t.py", sm.edit_signature(old, "import time\nMINUTE = 60\n\ndef parse_ts(x):\n    return x * MINUTE\n")))
         say = lambda *m: types.SimpleNamespace(session={"messages": [{"role": r, "content": t} for r, t in m]})
@@ -6052,6 +6054,10 @@ def test_repeat_and_stray(c, projects, gw_port):
             check("an English reply in a Greek chat goes back",
                   "in English, but the user writes Greek" in sm.script_reasons(greek_chat, "I noticed an important detail: the existing rules for "
                                                                            "invoices already round each entry, so the totals stay consistent with the tests."))
+            check("a short English aside between tool calls in a Greek chat gets a note",
+                  "in English, but the user writes Greek" in sm.script_reasons(greek_chat, "The pattern is clear. I'll add a `ClientsCliTests` class to the tests.", aside=True))
+            check("but not a Greek aside with terms",
+                  "in English" not in sm.script_reasons(greek_chat, "Τρέχω τις δοκιμές με το pytest και το unittest.", aside=True))
             check("a Greek reply with a few English terms does not", "in English" not in sm.script_reasons(
                 greek_chat, "Πρόσθεσα την εντολή clients στο CLI και έτρεξα όλες τις δοκιμές με το pytest· περνούν και οι σαράντα, μαζί με τις τρεις νέες."))
             check("a mixed word nothing can repair leaves text that came with tool calls",

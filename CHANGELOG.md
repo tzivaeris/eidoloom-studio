@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A rejected edit sent again with a line renamed slightly (`_SECONDS_PER_MINUTE` for `SECONDS_PER_MINUTE`) also
+  counts as the same edit. In a Greek chat, short English remarks between tool calls get a note to write Greek.
 - **Models with a small context window** (Ollama models with `num_ctx`, read from `/api/show`) no longer run out of
   room (`context_fit`, on by default): near 70% of the window older tool output and long written files are shortened,
   and near 85% the chat is summarized in the run, keeping the latest request. qwen3.8:32k had ended long runs on empty
