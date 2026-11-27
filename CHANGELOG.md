@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 (2026-11-27)
+
+See [docs/RELEASE-0.2.0.md](docs/RELEASE-0.2.0.md).
 
 - **Local models from Tools & setup**: PolyStrata (Qwen3.6-35B-A3B, Ornith 1.5 122B) and Strata (Swift 1.5) install
   from Account & settings → Tools & setup with a model that fits the machine, through their own setup, with the
