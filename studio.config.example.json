@@ -6,5 +6,6 @@
   "default_model": "",
   "max_turns": 200,
   "command_timeout_s": 120,
-  "public_url": ""
+  "public_url": "",
+  "updates": true
 }
