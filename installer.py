@@ -489,6 +489,8 @@ class Installer:
         try:
             done = subprocess.run(argv, cwd=cwd, env={**os.environ, **(env or {})}, capture_output=True, text=True, timeout=timeout)
         except FileNotFoundError:
+            if not check:               # a look at a program the machine does not have yet (docker on a new machine)
+                return 127, ""
             raise Fail(f"{argv[0]} is not installed")
         except subprocess.TimeoutExpired:
             raise Fail(f"{argv[0]} took longer than {timeout // 60} minutes")
@@ -746,7 +748,8 @@ class Installer:
             lines += ["# Optional: lets the agent's Chromium use its own sandbox (Ubuntu 23.10+ blocks it otherwise; it then runs without one)",
                       "cat > /etc/apparmor.d/studio-chromium <<'EOF'", APPARMOR_PROFILE.rstrip(), "EOF", "apparmor_parser -r /etc/apparmor.d/studio-chromium"]
         if "linger" in extra:
-            lines += ["# Keeps Studio's services running when you are signed out", 'loginctl enable-linger "$ME"']
+            lines += ["# Keeps Studio's services running when you are signed out (machines without systemd have no loginctl)",
+                      'if command -v loginctl >/dev/null; then loginctl enable-linger "$ME"; fi']
         lines.append('echo "Done. Back in Studio, press Check again."')
         return "\n".join(lines) + "\n"
 
@@ -951,7 +954,7 @@ class Installer:
                 got = progress.match(line)
                 if got:
                     self.job["progress"] = {"name": got.group(1), "done": float(got.group(2)) * 2 ** 30, "total": float(got.group(3)) * 2 ** 30}
-                elif line.startswith("===") or line.startswith("[ok]") or line.startswith("[!]") or "error" in line.lower():
+                elif line.startswith(("===", "[ok]", "[!]")) or (re.search(r"\berror\b", line, re.I) and "warning:" not in line and "note:" not in line):
                     self.job["progress"] = None if line.startswith("===") else self.job.get("progress")
                     self.log("   " + line[:300])
         code = proc.wait()
