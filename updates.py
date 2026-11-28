@@ -365,8 +365,19 @@ class Updates:
         stop = self.hooks.get("local_stop")
         if stop:
             stop()
+        # Strata from 0.2.16 keeps its server, engine and profiles in terminal/: an older commit without it would leave the
+        # built engine and the profiles where its code does not look (tried on a fresh machine on 2026-11-28, the list of
+        # models went empty), so a rollback across that move is refused before anything changes.
+        here = lambda rev: self.sh(["git", "-C", path, "cat-file", "-e", f"{rev}:terminal/serve/server.py"], check=False)[0] == 0
+        if here("HEAD") != here(prev["commit"]):
+            raise Fail("the update moved Strata's server into terminal/, so it cannot go back to the version before; nothing was changed")
+        now = self.sh(["git", "-C", path, "rev-parse", "HEAD"])[1].strip()
         self.sh(["git", "-C", path, "checkout", "--quiet", prev["commit"]], timeout=300)
-        self.sh([os.path.join(path, "setup.sh"), "--rollback-engine", "--yes"], cwd=path, timeout=1800, env={"NO_COLOR": "1"})
+        try:
+            self.sh([os.path.join(path, "setup.sh"), "--rollback-engine", "--yes"], cwd=path, timeout=1800, env={"NO_COLOR": "1"})
+        except Fail as e:
+            self.sh(["git", "-C", path, "checkout", "--quiet", now], timeout=300)        # the code goes back with the engine it was built for
+            raise Fail(f"the earlier engine could not be put back ({e}); Strata stays as it was")
         return f"Back to {self.sh(['git', '-C', path, 'log', '-1', '--format=%h %cs'])[1]} and its earlier engine."
 
     def pip_version(self, item):

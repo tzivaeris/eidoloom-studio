@@ -5,6 +5,9 @@
 - **A rejected change made by a command is caught too**: a command that changes a file the way you rejected earlier in
   the run, without naming it (a script that builds the file name), is put back after it runs and shown to you again as
   an edit card. It stays only on a new yes.
+- **Fixed**: rolling Strata back from 0.2.16 or later to an older version, which keeps its server outside `terminal/`,
+  left the models unlisted. Updates now refuses that rollback before changing anything, and if the earlier engine
+  cannot be put back, the code stays at the version its engine was built for.
 - **Fixed**: when a small model's context filled up, older finish summaries were shortened to a marker, and a model
   could copy that marker as its own answer. Only the text of older file writes is shortened now.
 

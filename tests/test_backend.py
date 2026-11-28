@@ -3811,6 +3811,32 @@ def test_updates(tmp):
     lm.rollback_localmodel(item, lm.info("polystrata")["prev"])
     check("rolling back returns to the earlier commit and its earlier engine",
           git("rev-parse", "HEAD", cwd=clone) == first and "--rollback-engine" in open(os.path.join(clone, "calls.txt")).read())
+    lm.update_localmodel(item)
+    newest = git("rev-parse", "HEAD", cwd=clone)
+    with open(os.path.join(clone, "setup.sh"), "w") as fh:          # a setup that kept no earlier engine, as on 2026-11-28
+        fh.write('#!/bin/sh\ncase "$*" in *--rollback-engine*) echo "no earlier engine is kept"; exit 1;; esac\n')
+    try:
+        lm.rollback_localmodel(item, lm.info("polystrata")["prev"])
+        failed = ""
+    except updates.Fail as e:
+        failed = str(e)
+    check("when the earlier engine cannot be put back, the code stays at the version its engine was built for",
+          "stays as it was" in failed and git("rev-parse", "HEAD", cwd=clone) == newest, failed)
+    git("-C", clone, "checkout", "-q", "setup.sh")
+    os.makedirs(os.path.join(origin, "terminal", "serve"))
+    open(os.path.join(origin, "terminal", "serve", "server.py"), "w").write("# moved\n")
+    git("add", "-A", cwd=origin)
+    git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "v3: the server moves to terminal/", cwd=origin)
+    lm.check_localmodel(item)                                    # the page checks (fetches) before it updates
+    lm.update_localmodel(item)
+    moved = git("rev-parse", "HEAD", cwd=clone)
+    try:
+        lm.rollback_localmodel(item, lm.info("polystrata")["prev"])
+        failed = ""
+    except updates.Fail as e:
+        failed = str(e)
+    check("a rollback across the move to terminal/ is refused before anything changes",
+          "terminal/" in failed and "nothing was changed" in failed and git("rev-parse", "HEAD", cwd=clone) == moved, failed)
     none = updates.Updates(os.path.join(tmp, "updates-none"), ROOT, {"busy": lambda: None, "config_get": {}.get})
     none.check("strata")
     check("a Strata that Studio did not install has nothing to update here, and is listed as not installed, not as a failed check",
