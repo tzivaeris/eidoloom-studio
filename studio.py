@@ -7170,10 +7170,17 @@ def holds_rejected(run, rel, sig):
     back like a repeat (it may be the materially different change the user wanted), but the card says so."""
     if not sig or not APP.cfg.get("repeat_check", True):
         return False
-    for path, before in getattr(run, "rejected", []):
-        if path == rel and before and sum(1 for b in before if any(a == b or edits_alike({a}, {b}) >= 1 for a in sig)) / len(before) >= 0.8:
-            return True
-    return False
+    return any(path == rel and holds_change(sig, before) for path, before in getattr(run, "rejected", []))
+
+
+def holds_change(sig, before):
+    return bool(before) and sum(1 for b in before if any(a == b or edits_alike({a}, {b}) >= 1 for a in sig)) / len(before) >= 0.8
+
+
+def forget_rejected(run, rel, sig):
+    """The user accepted an edit that holds a change they rejected before: it is theirs now, so commands that name the
+    file stop asking (on-r3 test 4 of the 2026-11-28 benchmark asked twice for the tests after the yes)."""
+    run.rejected = [(path, before) for path, before in run.rejected if not (path == rel and (holds_change(sig, before) or edits_alike(sig, before) >= 0.8))]
 
 
 def names_rejected_file(run, command):
@@ -7238,6 +7245,7 @@ def check_rejected_after(run, before):
             cid = make_checkpoint(run.ws, {rel: old})
             write_bytes(path, now.encode("utf-8"))
             run.emit("file_changed", path=rel, checkpoint=cid, action="create" if old is None else "edit", change=describe_change(old, now))
+            forget_rejected(run, rel, sig)
             notes.append(REJECTED_KEPT.format(rel=rel))
         else:
             notes.append(REJECTED_PUT_BACK.format(rel=rel) + (f" Note: {note}" if note else ""))
@@ -7292,6 +7300,8 @@ def apply_edit(run, rel, path, old, new):
                 summary = f"Partly applied {rel}"
                 result = (f"Only part of this change was applied: the user accepted {len(chosen)} of {len(extra['hunks'])} parts and rejected the rest. "
                           "Read the file before editing it again." + (f" Note: {note}" if note else ""))
+        if "warning" in extra and summary.startswith("Applied"):
+            forget_rejected(run, rel, sig)
     cid = make_checkpoint(run.ws, {rel: old})
     write_bytes(path, new.encode("utf-8"))
     run.changed = True

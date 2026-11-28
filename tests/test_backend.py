@@ -6263,6 +6263,10 @@ def test_repeat_and_stray(c, projects, gw_port):
         check("a command naming a file with a rejected change is found; another file is not",
               sm.names_rejected_file(run, "sed -i 's/60/MINUTE/' t.py") == "t.py" and sm.names_rejected_file(run, "cat notes.txt") is None
               and sm.names_rejected_file(run, "python3 test.py") is None)
+        kept = types.SimpleNamespace(rejected=list(run.rejected) + [("other.py", whole)])
+        sm.forget_rejected(kept, "t.py", whole)
+        check("once the user accepts an edit holding the rejected change, commands naming that file no longer ask",
+              sm.names_rejected_file(kept, "python3 -m py_compile t.py") is None and kept.rejected == [("other.py", whole)], kept.rejected)
         renamed = sm.edit_signature("import re\n\n_TS = 1\n", "import re\n\nSECONDS_IN_MINUTE = 60\n\n_TS = 1\n")
         per = types.SimpleNamespace(rejected=[("u.py", sm.edit_signature("_F = 1\n", "_F = 1\n\nSECONDS_PER_MINUTE = 60\n"))])
         check("the rejected constant renamed and put elsewhere is the same edit (SECONDS_IN_MINUTE, a Strata model's run)",

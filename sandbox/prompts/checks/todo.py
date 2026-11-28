@@ -1,5 +1,6 @@
 """Test 13: the final project must still follow the rules set in the first message."""
 import json
+import ast
 import os
 import re
 import shutil
@@ -57,7 +58,12 @@ for root, dirs, names in os.walk(SOURCE):
         if name.endswith(".py"):
             with open(os.path.join(root, name), encoding="utf-8") as handle:
                 text = handle.read()
-            imports |= set(re.findall(r"^\s*(?:from|import)\s+([a-zA-Z_]\w*)", text, re.M))
+            try:                           # the real imports, not "from it." in a docstring (bench v3, 2026-11-28)
+                tree = ast.parse(text)
+                imports |= {a.name.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
+                imports |= {n.module.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module and not n.level}
+            except SyntaxError:
+                imports |= set(re.findall(r"^\s*(?:from|import)\s+([a-zA-Z_]\w*)", text, re.M))
             check(f"{name} no longer mentions tasks.json except to migrate", name == "todo.py" or "migrat" in text.lower() or "tasks.json" not in text)
 outside = {name for name in imports if name not in sys.stdlib_module_names and not os.path.exists(os.path.join(SOURCE, name + ".py")) and name not in ("tests", "todo")}
 check("standard library only", not outside, outside)
