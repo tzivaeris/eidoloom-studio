@@ -12,6 +12,8 @@ jobs:
   backend:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    outputs:
+      passed: ${{ steps.tests.outputs.passed }}
     steps:
       - uses: actions/checkout@v4
       - name: Install ffmpeg
@@ -21,6 +23,7 @@ jobs:
           git config --global user.name "Eidoloom tests"
           git config --global user.email "tests@example.com"
       - name: Backend tests
+        id: tests
         run: |
           set +e
           python3 tests/test_backend.py 2>&1 | tee test-output.txt
@@ -28,11 +31,14 @@ jobs:
           # each failing check becomes an annotation, readable on the run's page without opening the log
           grep -E '^\s*FAIL|^Traceback|^[A-Za-z_.]+Error:' test-output.txt | head -40 | sed 's/^\s*/::error title=Failed check::/'
           tail -3 test-output.txt
+          echo "passed=$(grep -oE '^[0-9]+ passed, 0 failed' test-output.txt | tail -1 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
           exit $status
 
   browser:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    outputs:
+      passed: ${{ steps.tests.outputs.passed }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -52,6 +58,7 @@ jobs:
           npm ci
           npx playwright install --with-deps chromium
       - name: Browser tests
+        id: tests
         working-directory: tests/browser
         run: |
           set +e
@@ -70,6 +77,7 @@ jobs:
             status=${PIPESTATUS[0]}
           fi
           [ "$status" = 0 ] || { report error; cp test-output.txt "$RUNNER_TEMP/evidence/second-run/test-output.txt" 2>/dev/null || true; }
+          echo "passed=$(grep -oE '^[0-9]+ passed, 0 failed' test-output.txt | tail -1 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
           exit $status
       - name: Keep the evidence of a failure (trace, screenshot, Studio's log)
         if: always()
@@ -79,3 +87,31 @@ jobs:
           path: ${{ runner.temp }}/evidence
           if-no-files-found: ignore
           retention-days: 14
+
+  # The README's test-count badges read these files through shields.io's endpoint badge. They are written only after
+  # both test jobs pass on main, to a branch of their own, so the counts are always those of a green run.
+  badges:
+    needs: [backend, browser]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Write the counts to the badges branch
+        env:
+          BACKEND: ${{ needs.backend.outputs.passed }}
+          BROWSER: ${{ needs.browser.outputs.passed }}
+          REPO: ${{ github.repository }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          [ -n "$BACKEND" ] && [ -n "$BROWSER" ] || { echo "no counts"; exit 1; }
+          mkdir badges && cd badges
+          printf '{"schemaVersion":1,"label":"tests","message":"%s passing","color":"brightgreen"}\n' "$BACKEND" > tests.json
+          printf '{"schemaVersion":1,"label":"browser checks","message":"%s passing","color":"brightgreen"}\n' "$BROWSER" > browser.json
+          git init -q -b badges
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests.json browser.json
+          git commit -q -m "Test counts from ${GITHUB_SHA::7}"
+          git push -q -f "https://x-access-token:${TOKEN}@github.com/${REPO}.git" badges

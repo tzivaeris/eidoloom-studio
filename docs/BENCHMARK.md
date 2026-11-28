@@ -161,3 +161,36 @@ final sigma inside the query. In all three runs of the rejected-edit test the mo
 (six tries, among them a larger edit and a whole-file write holding it); Studio showed none of them, and the model then
 asked: 3 of 3 for the user, 0 of 3 for the model. Two failures of the automatic checks were rescored: the model's own
 repeat in test 4 (now its own measure) and a "(line 202)" read as a status in test 8 (a checker fix).
+
+
+## The guarded arm, a third time
+
+The guards were changed once more after the run above: an aside between tool calls with more English than Greek words
+now gets the script note, and a rejected change comes back only after an explicit yes that names it, with no word of
+refusal in the message. The guarded arm was run again on that code, 40 tests three times (2026-11-28), and judged the
+same way.
+
+| | Third time | Second time | First time |
+| --- | --- | --- | --- |
+| Raw (checks alone) | 102 pass, 14 review, 4 fail | 102 pass, 12 review, 6 fail | 101 pass, 15 review, 4 fail |
+| **What the user got** | **116 of 120** | 116 of 120 | 116 of 120 |
+| **Strict review** (any wrong status in test 8, any mixed or foreign word in tests 6, 9, 14) | **112 of 120** | 111 of 120 | not judged |
+| Task done | 120 of 120 | 117 of 120 | 119 of 120 |
+| The user's rules kept, as the user saw it | 116 of 120 | 119 of 120 | 117 of 120 |
+| The model kept the rules by itself | 94 of 120 | 98 of 120 | 100 of 120 |
+| Lapses Studio caught | 47 in 24 runs | 41 in 20 runs | 31 in 18 runs |
+| Runs where a lapse reached the user | 4 | 1 | 3 |
+
+What failed for the user: all three runs of the long session (test 13) made `add TEXT --priority high` store
+"--priority high" as part of the text, because `--priority` was read only before the text; sorting itself was right,
+and the first message's rules (errors, ids, standard library, tests) held in all three. That check is scored as one of
+the user's rules, since it is the session's second request. In the second run all three had read the option anywhere.
+The fourth failure is a Greeklish aside in the long Greek session ("to docstring, pou perieixe lexeis se Latin:"):
+Studio noted it to the model and removed the one word mixing Greek and Latin letters, but text that comes with tool
+calls is shown as written. In the rejected-edit test the model sent the rejected change again in two of three runs;
+Studio showed neither, and both runs then asked (3 of 3 for the user, 1 of 3 for the model). Four judged runs fail the
+strict review: Spanish words in a Greek summary (test 6), HEAD said to give 200 on API routes where the code gives 405
+(test 8), and stray or garbled words in two runs of the long Greek session (test 14).
+
+Three runs in a row of 116 of 120 for the user, with different failures each time, is the clearest result: the guards
+hold what they cover, and what is left is the model's own work and text it writes beside its tool calls.

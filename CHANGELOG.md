@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Badges with live counts**: the README shows the backend and browser test counts from the latest green run on
+  `main` (the CI writes them to a `badges` branch, which shields.io reads), the benchmark result with its strict figure,
+  and what Studio runs on.
+- **Benchmark, the guarded arm a third time** (`docs/BENCHMARK.md`): 116 of 120 for the user again, 112 by the strict
+  review.
 - **A rejected change made by a command is caught too**: a command that changes a file the way you rejected earlier in
   the run, without naming it (a script that builds the file name), is put back after it runs and shown to you again as
   an edit card. It stays only on a new yes. Only that file's text is put back: anything else the command did (other

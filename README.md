@@ -6,6 +6,14 @@
 
 <p align="center">
   <a href="https://github.com/tzivaeris/eidoloom-studio/actions/workflows/tests.yml"><img src="https://github.com/tzivaeris/eidoloom-studio/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
+  <a href="https://github.com/tzivaeris/eidoloom-studio/actions/workflows/tests.yml"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ftzivaeris%2Feidoloom-studio%2Fbadges%2Ftests.json" alt="Backend tests passing"></a>
+  <a href="https://github.com/tzivaeris/eidoloom-studio/actions/workflows/tests.yml"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ftzivaeris%2Feidoloom-studio%2Fbadges%2Fbrowser.json" alt="Browser checks passing"></a>
+  <a href="docs/BENCHMARK.md#the-guarded-arm-a-third-time"><img src="https://img.shields.io/badge/benchmark-116%2F120%20%C2%B7%20strict%20112-brightgreen" alt="Benchmark: 116 of 120 with the guards, 112 by the strict review"></a>
+  <br>
+  <img src="https://img.shields.io/badge/python-3.10%2B%20%C2%B7%20stdlib%20only-3776AB?logo=python&amp;logoColor=white" alt="Python 3.10 or newer, standard library only">
+  <img src="https://img.shields.io/badge/models-Ollama%20%C2%B7%20llama.cpp%20%C2%B7%20vLLM%20%C2%B7%20LM%20Studio%20%C2%B7%20Strata-6f42c1" alt="Models: Ollama, llama.cpp, vLLM, LM Studio, Strata">
+  <img src="https://img.shields.io/badge/sandbox-Docker%2C%20per%20folder-2496ED?logo=docker&amp;logoColor=white" alt="Sandbox: Docker, per folder">
+  <img src="https://img.shields.io/badge/server-Linux%20%C2%B7%20folders%20on%20Windows%20too-555" alt="Server on Linux; folders on Windows computers through the helper">
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-AGPL--3.0-blue" alt="Licence: AGPL-3.0"></a>
 </p>
 
@@ -84,7 +92,7 @@ The rest (REVIEW: 8 without the guards, 15 with them) passed every check but nee
 other scripts the chat does not use, repairs of words mixing Greek and Latin letters, checks of the user's earlier rules,
 a check for a finish that leaves the answer out, and one that catches a rejected change sent again. On two smaller Qwen models with a 32K context
 window, long sessions ran out of room and ended on empty replies; Studio now shortens and, near the limit, summarizes
-the chat during the run, and those sessions finished: over all 40 tests no guarded run ran out of room, and qwen3.6:32k went from 27 to 30 passed. After that run the guards were fixed for what still failed, and the guarded arm was run again (40 tests, three times): 116 of 120 again for the user, now counted three ways. The task was done in 117 runs; the user's rules held, as the user saw it, in 119; the model kept them by itself in 98. Studio caught 41 of the model's lapses in 20 runs, among them six tries at a rejected change, none shown to the user; one lapse (half-English asides in a Greek chat) still reached the user. The three task failures (a miscount, a rename that went too far, a search bug) are the model's own. Details: [BENCHMARK.md](docs/BENCHMARK.md#the-guarded-arm-again).
+the chat during the run, and those sessions finished: over all 40 tests no guarded run ran out of room, and qwen3.6:32k went from 27 to 30 passed. After that run the guards were fixed for what still failed, and the guarded arm was run again (40 tests, three times): 116 of 120 again for the user, now counted three ways. The task was done in 117 runs; the user's rules held, as the user saw it, in 119; the model kept them by itself in 98. Studio caught 41 of the model's lapses in 20 runs, among them six tries at a rejected change, none shown to the user; one lapse (half-English asides in a Greek chat) still reached the user. The three task failures (a miscount, a rename that went too far, a search bug) are the model's own. Details: [BENCHMARK.md](docs/BENCHMARK.md#the-guarded-arm-again). A third run on the final code (the aside rule and the explicit yes for a rejected change) gave 116 of 120 for the user again, **112 of 120 by the strict review** (111 the time before), with different failures: in all three long sessions the model read `--priority` only before the task's text, and one Greeklish aside reached the user. The task was done in 120 runs, the model kept the rules by itself in 94, and Studio caught 47 lapses in 24 runs. Details: [BENCHMARK.md](docs/BENCHMARK.md#the-guarded-arm-a-third-time).
 One model and a few repetitions is a small sample, so read it as
 a direction, not a score.
 Every run, the failing check or the reviewer's reason, and how runs are scored: [BENCHMARK.md](docs/BENCHMARK.md).
