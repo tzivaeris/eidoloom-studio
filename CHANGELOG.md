@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Greeklish between the agent's steps is turned back into Greek**: in a Greek chat, a line written in Latin letters
+  («to arxeio einai etoimo») becomes Greek word by word where the lexicon leaves no doubt. English words, code, quoted
+  text and names stay, and a line in another language is left alone.
 - **Badges with live counts**: the README shows the backend and browser test counts from the latest green run on
   `main` (the CI writes them to a `badges` branch, which shields.io reads), the benchmark result with its strict figure,
   and what Studio runs on.

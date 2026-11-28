@@ -10571,6 +10571,86 @@ def repair_mixed(text):
     return "".join(out)
 
 
+# Whole words of Greek in Latin letters (Greeklish) inside Greek text (2026-11-28, the user's request after v5's test 14:
+# «to docstring, pou perieixe lexeis se Latin:» came with a tool call, so it could not be sent back, and was shown as
+# written). A line with at least GREEKLISH_LINE words that are surely Greeklish (a common Greek word in Latin letters,
+# or a non-English word whose Greek spelling is a word of the lexicon) has those words, and its short words with a
+# Greek reading («to», «se», «na»), turned back into Greek. English words, code, paths, acronyms and capitalised names
+# stay; nothing is changed without the lexicon. Only in a Greek chat (the caller decides).
+GREEKLISH_LINE = 2
+# Short words that are Greek articles and particles as often as English ones: changed only on a line that is Greeklish.
+GREEKLISH_SHORT = {"to", "ta", "se", "na", "me", "ti", "o", "i", "oi", "h", "tin", "ton", "tis", "tou", "sto", "sti", "sta", "stn"}
+# Their usual meaning, where the lexicon's first match would be a rarer word («tis» is της far more often than τις).
+GREEKLISH_USUAL = {"tis": "της", "ti": "τη", "tin": "την", "ton": "τον", "twn": "των", "tou": "του", "i": "η", "h": "η", "o": "ο",
+                   "oi": "οι", "to": "το", "ta": "τα", "se": "σε", "na": "να", "me": "με", "pou": "που", "oti": "ότι", "afti": "αυτή",
+                   "afto": "αυτό", "ayto": "αυτό", "auto": "αυτό", "ola": "όλα", "alla": "αλλά", "kai": "και", "ke": "και", "den": "δεν", "gia": "για", "apo": "από"}
+# Quoted text is often data («the query "thalassa"»): it stays as written.
+QUOTED_RE = re.compile(r'"[^"\n]*"|“[^”\n]*”|\'[^\'\n]*\'')
+GREEKLISH_WORD_RE = re.compile(r"(?<![\w`/.\\-])([A-Za-z]{2,})(?![\w`/(\\-])")
+
+
+def greeklish_word(word):
+    """The Greek word a word in Latin letters spells, or None when the lexicon has none."""
+    if word.lower() in GREEKLISH_USUAL:
+        return GREEKLISH_USUAL[word.lower()] if greek_word_known(GREEKLISH_USUAL[word.lower()]) else None
+    if len(word) > 14:
+        return None
+    found = set()
+    for spelled in greeklish_spellings(word):
+        spelled = final_sigma(spelled)
+        for accented in with_accents(spelled):
+            if greek_word_known(accented):
+                found.add(accented)
+                break
+        if len(found) > 1:     # «trexei» is τρέχει or τρέξει, «lexis» λέξης or λέξεις: not a guess to show the user
+            return None
+    return found.pop() if found else None
+
+
+def repair_greeklish(text):
+    if not isinstance(text, str) or not LATIN_RE.search(text) or not (APP is None or APP.cfg.get("script_check", True)):
+        return text
+
+    def fix_line(line):
+        blank = lambda x: " " * len(x.group(0))
+        words = [m for m in GREEKLISH_WORD_RE.finditer(QUOTED_RE.sub(blank, NOT_PROSE_RE.sub(blank, line)))
+                 if not m.group(1).isupper() and not (m.group(1)[0].isupper() and m.start() > 0 and line[m.start() - 2:m.start()].strip() not in ("", ".", ":", "!", "?"))]
+        sure, unsure, fixes = set(), set(), {}
+        for m in words:
+            w = m.group(1)
+            if w.lower() in GREEKLISH_WORDS or (len(w) >= 4 and english_word(w) is False):
+                greek = greeklish_word(w)
+                if greek:
+                    sure.add(w.lower())
+                    fixes[m.span(1)] = greek
+                else:
+                    unsure.add(w.lower())
+        # at least two different words, and at least as many as the foreign words it cannot read: German («Ich prüfe den
+        # Stand gegen alle…») has a «den» and an «alle», and many more that are not Greek
+        if len(sure) < GREEKLISH_LINE or len(sure) < len(unsure):
+            return line
+        for m in words:
+            w = m.group(1)
+            if m.span(1) not in fixes and len(w) <= 3 and (w.lower() in GREEKLISH_SHORT or english_word(w) is False):
+                greek = greeklish_word(w)
+                if greek:
+                    fixes[m.span(1)] = greek
+        out, at = [], 0
+        for (a, b), greek in sorted(fixes.items()):
+            w = line[a:b]
+            out += [line[at:a], greek[0].upper() + greek[1:] if w[0].isupper() else greek]
+            at = b
+        return "".join(out) + line[at:]
+
+    out, at = [], 0
+    for m in re.finditer(r"```.*?```", text, re.S):         # code blocks stay; inline code is blanked by NOT_PROSE_RE
+        out.append("\n".join(fix_line(l) for l in text[at:m.start()].split("\n")))
+        out.append(m.group(0))
+        at = m.end()
+    out.append("\n".join(fix_line(l) for l in text[at:].split("\n")))
+    return "".join(out)
+
+
 def mixed_note(words, where):
     shown = ", ".join(f"«{w}»" for w in words[:6]) + (f" and {len(words) - 6} more" if len(words) > 6 else "")
     return f"Studio note: {where} {shown}, mixing Greek and Latin letters in one word. Write each word in one alphabet."
@@ -10878,8 +10958,16 @@ def drop_foreign(run, text):
     """See drop_foreign_chars; in a Greek chat, words of other languages go too (stray_latin)."""
     text = drop_foreign_chars(run, text)
     if APP.cfg["script_check"] and isinstance(text, str):
-        text = drop_mixed(drop_stray_latin(run, text))
+        text = drop_mixed(drop_stray_latin(run, greek_again(run, text)))
     return text
+
+
+def greek_again(run, text):
+    """repair_greeklish in a Greek chat."""
+    if not isinstance(text, str) or not LATIN_RE.search(text):
+        return text
+    language = asked_language(run.session["messages"], (run.session.get("goal") or {}).get("text")) or user_language(run.session["messages"])
+    return repair_greeklish(text) if language == "Greek" else text
 
 
 def drop_mixed(text):

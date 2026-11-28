@@ -4333,6 +4333,28 @@ def test_greek_grammar(c, st_port, tmp):
         text = "Η θάλaσσα είναι εδώ, το `θάλaσσα` στον κώδικα μένει, και υπάρχειnoch ένα Σcaffolding."
         check("a reply is repaired outside code, and what cannot be repaired stays", sm.repair_mixed(text)
               == "Η θάλασσα είναι εδώ, το `θάλaσσα` στον κώδικα μένει, και υπάρχει ένα Σcaffolding.", sm.repair_mixed(text))
+        print("whole Greeklish words in Greek text (repair_greeklish), on the same lexicon")
+        for text, meant, why in [
+                ("to spiti einai megalo, to `spiti` menei, kai to vouno.", "το σπίτι είναι μεγάλο, το `spiti` μένει, kai το vouno.",
+                 "a Greeklish line becomes Greek, code stays, and a word the lexicon lacks stays"),
+                ("```\nto spiti einai megalo\n```", "```\nto spiti einai megalo\n```", "a code block stays"),
+                ("To spiti einai megalo.\nKeep server and check as they are.", "Το σπίτι είναι μεγάλο.\nKeep server and check as they are.",
+                 "line by line: an English line beside it is left alone"),
+                ("to server einai megalo", "το server είναι μεγάλο", "English words inside stay"),
+                ("einai to server", "einai to server", "one Greeklish word is not enough"),
+                ("Ich habe einai megalo Buch und Haus gegen alle drei", "Ich habe einai megalo Buch und Haus gegen alle drei",
+                 "a line with more foreign words than Greek ones is another language"),
+                ('the query "spiti einai megalo" stays', 'the query "spiti einai megalo" stays', "quoted text is data"),
+                ("Running SPITI EINAI tests", "Running SPITI EINAI tests", "capitals are names or acronyms")]:
+            check(f"«{text[:40]}»: {why}", sm.repair_greeklish(text) == meant, sm.repair_greeklish(text))
+
+        class R:
+            def __init__(self, said):
+                self.session = {"messages": [{"role": "user", "content": said}]}
+        greek_run, english_run = R("Γράψε μου ένα μικρό πρόγραμμα για τις λέξεις του σπιτιού, παρακαλώ."), R("Write me a small program, please.")
+        check("only in a Greek chat", sm.greek_again(greek_run, "to spiti einai megalo") == "το σπίτι είναι μεγάλο"
+              and sm.greek_again(english_run, "to spiti einai megalo") == "to spiti einai megalo",
+              (sm.greek_again(greek_run, "to spiti einai megalo"), sm.greek_again(english_run, "to spiti einai megalo")))
         sm.ENGLISH_DICT["words"] = set()
         check("without an English word list, a Latin part is neither dropped nor spaced", sm.repaired_word("υπάρχειnoch") is None
               and sm.repaired_word("τοserver") is None)
