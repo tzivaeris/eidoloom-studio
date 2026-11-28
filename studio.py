@@ -10727,7 +10727,9 @@ def script_reasons(run, text, aside=False):
     latin = sum(1 for w in prose if LATIN_RE.search(w) and not GREEK_RE.search(w))
     # qwen3.8, test 14 of 2026-11-26; between tool calls the asides are short ("The pattern is clear. I'll add a … class",
     # qwen3.6 and qwen3.8, test 14 of 2026-11-27), so a lower bar there.
-    if language == "Greek" and (latin >= 6 and latin > 4 * greek if aside else latin >= 12 and latin > 2 * greek):
+    # Since v4 of the benchmark (on-r2 test 14: «Θα προσθέσω το … σε 5 βήματα: (1) new rule in `db.py`, (2) routing in …»)
+    # an aside with more English words than Greek ones counts: such text is shown as it comes, so the note must come early.
+    if language == "Greek" and (latin >= 5 and latin > greek if aside else latin >= 12 and latin > 2 * greek):
         reasons.append("it is in English, but the user writes Greek")
     stray = [w for _, w in stray_latin(run, text)] if language == "Greek" else []
     if stray:

@@ -23,6 +23,8 @@
   are off is told to ask in its reply.
 - **A request that something "behaves exactly as now"** gets the closing rules check even when it is the only request:
   the agent is asked to compare the old and new output, not to read the code.
+- **Asides between tool calls with more English than Greek words get the note too** in a Greek chat (it took four times
+  as many before). Such text is shown as it comes, so the note comes after the first one and keeps the later ones Greek.
 - **Every guard records what it did** as a structured event in the chat: `guard_triggered` (a note to the model),
   `guard_blocked` (kept from you or put back) or `guard_recovered` (fixed by Studio), with the guard, the case and
   whether it was the model's mistake. The page ignores them; the benchmark counts them.

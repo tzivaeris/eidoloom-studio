@@ -6367,6 +6367,12 @@ def test_repeat_and_stray(c, projects, gw_port):
                                                                            "invoices already round each entry, so the totals stay consistent with the tests."))
             check("a short English aside between tool calls in a Greek chat gets a note",
                   "in English, but the user writes Greek" in sm.script_reasons(greek_chat, "The pattern is clear. I'll add a `ClientsCliTests` class to the tests.", aside=True))
+            check("an aside with more English words than Greek ones gets a note too (v4, test 14)", all(
+                "in English, but the user writes Greek" in sm.script_reasons(greek_chat, t, aside=True) for t in (
+                    "Θα προσθέσω το `GET /api/entries/{id}` σε 5 βήματα: (1) new rule in `db.py`, (2) routing in `server.py`, (3) test, (4) README, (5) function execution.",
+                    "Το test_clients.py χρειάζεται επιπλέον imports (json, subprocess, sys, ROOT):")))
+            check("but an aside that is mostly Greek with a few names does not", "in English" not in sm.script_reasons(
+                greek_chat, "Διαβάζω το `db.py` και το `server.py` για να δω πώς ορίζονται οι διαδρομές των πελατών.", aside=True))
             check("but not a Greek aside with terms",
                   "in English" not in sm.script_reasons(greek_chat, "Τρέχω τις δοκιμές με το pytest και το unittest.", aside=True))
             check("a Greek reply with a few English terms does not", "in English" not in sm.script_reasons(
