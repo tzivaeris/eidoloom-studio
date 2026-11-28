@@ -7183,15 +7183,21 @@ def forget_rejected(run, rel, sig):
     run.rejected = [(path, before) for path, before in run.rejected if not (path == rel and (holds_change(sig, before) or edits_alike(sig, before) >= 0.8))]
 
 
-def names_rejected_file(run, command):
-    """The first file with a rejected change in this run that a command names (its path, or its name as a word)."""
+def names_rejected_files(run, command):
+    """The files with a rejected change in this run that a command names (its path, or its name as a word), in order."""
     if not APP.cfg.get("repeat_check", True):
-        return None
+        return []
+    found = []
     for rel, _ in getattr(run, "rejected", []):
         name = rel.rsplit("/", 1)[-1]
-        if any(re.search(rf"(?<![\w.-]){re.escape(n)}(?![\w-])", command) for n in {rel, name}):
-            return rel
-    return None
+        if rel not in found and any(re.search(rf"(?<![\w.-]){re.escape(n)}(?![\w-])", command) for n in {rel, name}):
+            found.append(rel)
+    return found
+
+
+def names_rejected_file(run, command):
+    """The first file with a rejected change in this run that a command names, or None."""
+    return next(iter(names_rejected_files(run, command)), None)
 
 
 REJECTED_BY_COMMAND = ("A command made the change to {rel} you rejected earlier in this run, without an edit card. Studio put "
@@ -8100,16 +8106,18 @@ def tool_run(run, args):
             return False, "Command skipped", ("Plan mode is on, and the user did not allow this command, which could change things. "
                                               "Look with commands that only read, and put what you would run in your plan." + (f" Note: {note}" if note else ""))
     else:
-        touched = names_rejected_file(run, command)
+        touched = names_rejected_files(run, command)
         if touched and looks_only(command, detect_test_command(run.ws["path"])):
-            touched = None
+            touched = []
         if not run.auto_commands or touched:
-            extra = {"warning": REJECTED_FILE_COMMAND.format(rel=touched)} if touched else {}
+            extra = {"warning": REJECTED_FILE_COMMAND.format(rel=", ".join(touched))} if touched else {}
             decision, note = run.ask(kind="command", command=command, **extra)
             if decision != "accept":
                 return False, "Command skipped", "The user rejected this command." + (f" Note: {note}" if note else "")
     run.changed = run.changed or writes_files(command)
-    watched = {} if touched else rejected_files_before(run)       # a command the user allowed knowing it names the file is theirs
+    # A file the user was warned about and allowed is theirs; every other file with a rejected change is still checked after
+    # the command, since one command can name one file and change another (the user's review of 2026-11-28).
+    watched = {rel: text for rel, text in rejected_files_before(run).items() if rel not in (touched or [])}
     result = run_online_if_allowed(run, command)
     if watched and (notes := check_rejected_after(run, watched)):
         ok, summary, text = result

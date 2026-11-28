@@ -4,7 +4,11 @@
 
 - **A rejected change made by a command is caught too**: a command that changes a file the way you rejected earlier in
   the run, without naming it (a script that builds the file name), is put back after it runs and shown to you again as
-  an edit card. It stays only on a new yes.
+  an edit card. It stays only on a new yes. Only that file's text is put back: anything else the command did (other
+  files, a database, a service) is not undone, so this is not a full rollback.
+- **Fixed**: a command that named one file with a rejected change skipped the after-command check for the others, so
+  it could make a rejected change in a second file unseen. Only the files you were warned about and allowed are left
+  out now.
 - **Fixed**: rolling Strata back from 0.2.16 or later to an older version, which keeps its server outside `terminal/`,
   left the models unlisted. Updates now refuses that rollback before changing anything, and if the earlier engine
   cannot be put back, the code stays at the version its engine was built for.

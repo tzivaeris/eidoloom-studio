@@ -6236,6 +6236,25 @@ def test_repeat_and_stray(c, projects, gw_port):
         else:
             check("accepted the second time, the command's change stays, with an undo point",
                   text == "# Sample\nMINUTE = 60\n" and any(e["type"] == "file_changed" and e.get("checkpoint") for e in events), text)
+    both = os.path.join(projects, "sneak-two")
+    os.makedirs(both)
+    for name, head in (("README.md", "# Sample\n"), ("NOTES.md", "# Notes\n")):
+        with open(os.path.join(both, name), "w") as fh:
+            fh.write(head)
+    bws = c.post("/api/workspace/open", {"path": both})[1]["workspace"]["id"]
+    cards = []
+
+    def answer_two(ev):
+        cards.append(ev)
+        return ("accept" if ev.get("kind") == "command" else "reject"), ""
+    run_agent(c, bws, c.post("/api/agent/sessions", {"ws": bws})[1]["id"], "Sneak past the named file", auto_commands=True,
+              on_approval=answer_two)
+    command = [e for e in cards if e.get("kind") == "command"]
+    check("a command naming one file with a rejected change asks, with a warning about that file",
+          len(command) == 1 and "NOTES.md" in (command[0].get("warning") or ""), [(e.get("kind"), e.get("warning")) for e in cards])
+    check("and the other file it changes without naming it is still checked: the rejected change is shown again and put back",
+          len(cards) == 4 and cards[3].get("path") == "README.md" and "without an edit card" in (cards[3].get("warning") or "")
+          and open(os.path.join(both, "README.md")).read() == "# Sample\n", [(e.get("kind"), e.get("path")) for e in cards])
     saved, sm.APP = sm.APP, types.SimpleNamespace(cfg={"script_check": True})
     try:
         old = "import time\n\ndef parse_ts(x):\n    return x * 60\n"
@@ -6260,6 +6279,8 @@ def test_repeat_and_stray(c, projects, gw_port):
         check("the rejected constant with its uses added is not sent back, but the card says it holds the rejected change",
               not sm.repeats_rejected(run, "t.py", whole) and sm.holds_rejected(run, "t.py", whole)
               and not sm.holds_rejected(run, "t.py", sm.edit_signature(old, "import time\n\ndef parse_ts(x):\n    return x * 60.0\n")))
+        check("a command naming two files with rejected changes names both", sm.names_rejected_files(
+            types.SimpleNamespace(rejected=list(run.rejected) + [("b.py", first)]), "diff t.py b.py") == ["t.py", "b.py"])
         check("a command naming a file with a rejected change is found; another file is not",
               sm.names_rejected_file(run, "sed -i 's/60/MINUTE/' t.py") == "t.py" and sm.names_rejected_file(run, "cat notes.txt") is None
               and sm.names_rejected_file(run, "python3 test.py") is None)
