@@ -18,7 +18,7 @@ See [docs/RELEASE-0.2.0.md](docs/RELEASE-0.2.0.md).
 - **Local models from Tools & setup**: PolyStrata (Qwen3.6-35B-A3B, Ornith 1.5 122B) and Strata (Swift 1.5) install
   from Account & settings → Tools & setup with a model that fits the machine, through their own setup, with the
   download's progress on the page; Studio starts their server on a port of its own (`local_port`) when a chat picks
-  one of their models, beside any Ollama or other server, and Updates keeps them current. No Ollama Manager needed.
+  one of their models, beside any Ollama or other server, and Updates keeps them current.
 - **A rejected change is never made without a new yes**: a later edit that holds it with more lines added says so on
   its card, and a command that names the file asks even with auto-run on. Only a changed name counts as the same
   line: a changed number, string or operator makes a different edit (`n < 5` and `n <= 5` are not the same). When a

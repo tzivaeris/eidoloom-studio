@@ -9,7 +9,7 @@ and `./install.sh` again.
   (Qwen3.6-35B-A3B, Ornith 1.5 122B) and Strata (Swift 1.5). Studio offers the models that fit the machine's graphics
   card, memory and disk, and installs one through its own setup, with the download's progress on the page. **Add this
   model** adds another one later. When a chat picks one of these models, Studio starts its server on a port of its own
-  (`local_port`), beside any Ollama or other model server. No Ollama Manager and no hand-run scripts are needed.
+  (`local_port`), beside any Ollama or other model server. No hand-run scripts are needed.
 - **Updates keeps them current.** Updates checks Strata and PolyStrata against their repositories, updates them
   through their own setup and can roll back. Strata 0.2.16 and later keep their server in `terminal/`. Studio finds
   it there or in the old place, so an update does not lose the models. Updates is now on in a new install. Tools a

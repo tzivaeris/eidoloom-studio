@@ -215,7 +215,7 @@ by their own authors.
 **Install them from Studio.** Account & settings → Tools & setup → Local models lists PolyStrata and Strata, each with
 the models that fit this machine's card, RAM and disk. Pick a model and press Install: Studio fetches the server at a
 tested version, its own setup builds the engine for your card (AMD or NVIDIA) and downloads the model, with the
-download's progress on the page. Nothing else is needed: no Ollama, no Ollama Manager. The installed models appear in
+download's progress on the page. Nothing else is needed. The installed models appear in
 the model picker beside any others, and the first message to one starts its server on a port of its own
 (`local_port`, 8097); choosing another switches it once nothing else uses it, and an idle model is unloaded after
 `strata_idle_minutes`. Add another model later with **Add this model**. Account & settings → Updates checks both for
@@ -241,11 +241,11 @@ recognises it and then:
 - passes pictures to it, and lets you give its model a friendly name (Account & settings → Models → Rename).
 
 **Or let Studio start a Strata you installed yourself.** Set `strata_dir` to your Strata folder (or `polystrata_dir`
-to a PolyStrata folder) and `local_port` to a free port, or, with no other model server, `gateway` to a free port, for example:
+to a PolyStrata folder) and `local_port` to a free port, for example:
 
 ```json
 "strata_dir": "~/Strata",
-"gateway": "http://127.0.0.1:18090"
+"local_port": 8097
 ```
 
 Then every profile you made with Strata's setup is a model in the picker. The first message starts Strata with that
