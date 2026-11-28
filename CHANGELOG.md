@@ -16,8 +16,9 @@
   could copy that marker as its own answer. Only the text of older file writes is shortened now.
 
 - **A larger edit that holds a change you rejected is not shown either**: the agent is told to ask you first. If you
-  have since written to the agent about that change (naming the file or what it added, without a no), it is shown,
-  and its card says it holds the rejected change. An unrelated message does not count.
+  have since told the agent yes to that change in so many words (a yes that names the file or what it added, with no
+  "don't" or "not" in the message), it is shown, and its card says it holds the rejected change. An unrelated message,
+  or one that names the change and says no, does not count.
 - **Fixed**: a file name in bold code (``**`db.py`**``) made the check for words mixing Greek and Latin letters skip the
   prose up to the next code span, so «ενόςSingle» reached the chat. An agent that tries `ask_user` where questions
   are off is told to ask in its reply.

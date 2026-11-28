@@ -6313,6 +6313,14 @@ def test_repeat_and_stray(c, projects, gw_port):
               and sm.about_rejected(about, "Also fix the README typo.") == set()
               and sm.about_rejected(about, "No, don't add SECONDS_PER_MINUTE.") == set()
               and sm.about_rejected(about, "Όχι, άσε το timeutil.py") == set())
+        for text in ("I checked timeutil.py. Don't add that constant.", "timeutil.py looks fine as it is.",
+                     "Yes, but not SECONDS_PER_MINUTE: call it MINUTE.", "OK, use timeutil.py without the constant.",
+                     "Κοίταξα το timeutil.py, δεν θέλω τη σταθερά.", "SECONDS_PER_MINUTE?", "timeutil.py looks fine as it is.",
+                     "Keep timeutil.py as it is."):
+            check(f"naming the rejected change without an explicit yes, or with a no, is not a yes: {text}", sm.about_rejected(about, text) == set())
+        check("an explicit yes that names it is (English and Greek)",
+              sm.about_rejected(about, "OK, go ahead with SECONDS_PER_MINUTE in timeutil.py.") == {"tallybook/timeutil.py"}
+              and sm.about_rejected(about, "Ναι, βάλε το SECONDS_PER_MINUTE στο timeutil.py.") == {"tallybook/timeutil.py"})
         check("a request that something behaves exactly as now is checked even when it is the only one",
               sm.SAME_BEHAVIOUR_RE.search("Without it, the script behaves exactly as now.") and not sm.SAME_BEHAVIOUR_RE.search("Add a --dry-run option."))
         sm.APP.cfg["ask_tool"] = False

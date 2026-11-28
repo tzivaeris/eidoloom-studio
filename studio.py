@@ -7161,16 +7161,23 @@ def repeats_rejected(run, rel, sig):
 
 REJECTED_INSIDE = ("This change includes the change to {rel} you rejected earlier in this run{more}. "
                    "Accept only if you want it after all.")
-REFUSAL_RE = re.compile(r"^\s*(?:no\b|nope\b|don'?t\b|do not\b|never\b|stop\b|leave it\b|όχι\b|μην\b|μη\b|σταμάτα\b|άσ'? ?το\b)", re.I)
+# A rejected change comes back only on an explicit yes that names it (the user's review of 2026-11-28: "I checked
+# timeutil.py. Don't add that constant." names the file but is a no). A yes word must be there, and no word of refusal
+# anywhere in the message; anything else keeps the larger edit held back.
+APPROVAL_RE = re.compile(r"\b(?:yes|yeah|yep|ok|okay|sure|go ahead|do it|add it|apply it|use it|approved?)\b|"
+                         r"(?<!\w)(?:ναι|εντάξει|οκ|οκέι|προχώρα|κάν[ε']? ?το|βάλ[ε']? ?το|πρόσθεσέ το|συμφωνώ)(?!\w)", re.I)
+NEGATION_RE = re.compile(r"\b(?:no|not|nope|don'?t|doesn'?t|didn'?t|never|stop|without|instead|rather|wrong|undo|revert|remove|leave|as it is|as is)\b|n't\b|"
+                         r"(?<!\w)(?:όχι|μην|μη|δεν|χωρίς|αντί|σταμάτα|άσ[ε']? ?το|ξέχασέ το|λάθος)(?!\w)", re.I)
 KEYWORDS = {"def", "class", "return", "import", "from", "self", "None", "True", "False", "and", "not", "for", "while", "with",
             "const", "let", "var", "function", "this", "new", "the", "int", "str"}
 
 
 def about_rejected(run, text):
-    """The files with a rejected change that a message from the user is about: it names the file, or a name the rejected
-    lines brought in (SECONDS_PER_MINUTE), and does not open with a refusal. An unrelated message ("also fix the README")
-    is not a yes to a larger edit holding the rejected change (the user's review of 2026-11-28)."""
-    if REFUSAL_RE.match(text or ""):
+    """The files whose rejected change a message from the user explicitly allows again: it names the file, or a name the
+    rejected lines brought in (SECONDS_PER_MINUTE), says yes, and holds no word of refusal. Anything less ("also fix the
+    README", "I checked timeutil.py. Don't add that constant.") leaves an edit holding the rejected change held back."""
+    text = text or ""
+    if not APPROVAL_RE.search(text) or NEGATION_RE.search(text):
         return set()
     found = set()
     for rel, sig in getattr(run, "rejected", []):
