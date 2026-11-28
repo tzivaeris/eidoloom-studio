@@ -15,6 +15,16 @@
 - **Fixed**: when a small model's context filled up, older finish summaries were shortened to a marker, and a model
   could copy that marker as its own answer. Only the text of older file writes is shortened now.
 
+- **A larger edit that holds a change you rejected is not shown either**: the agent is told to ask you first. If you
+  have written to the agent since the rejection, it is shown, and its card says it holds the rejected change.
+- **Fixed**: a file name in bold code (``**`db.py`**``) made the check for words mixing Greek and Latin letters skip the
+  prose up to the next code span, so «ενόςSingle» reached the chat. A reply sent back for stray words is now shown
+  without them, and an agent that tries `ask_user` where questions are off is told to ask in its reply.
+- **A request that something "behaves exactly as now"** gets the closing rules check even when it is the only request:
+  the agent is asked to compare the old and new output, not to read the code.
+- Benchmark: each run records what the guards caught (`sandbox/guard_log.py`) and is scored three ways: the task, the
+  model alone, and what Studio caught before the user saw it.
+
 ## 0.2.0 (2026-11-27)
 
 See [docs/RELEASE-0.2.0.md](docs/RELEASE-0.2.0.md).

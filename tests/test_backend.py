@@ -6236,6 +6236,21 @@ def test_repeat_and_stray(c, projects, gw_port):
         else:
             check("accepted the second time, the command's change stays, with an undo point",
                   text == "# Sample\nMINUTE = 60\n" and any(e["type"] == "file_changed" and e.get("checkpoint") for e in events), text)
+    held = os.path.join(projects, "held-larger")
+    os.makedirs(held)
+    with open(os.path.join(held, "README.md"), "w") as fh:
+        fh.write("# Sample\n")
+    hws = c.post("/api/workspace/open", {"path": held})[1]["workspace"]["id"]
+    held_cards = []
+
+    def reject_all(ev):
+        held_cards.append(ev)
+        return "reject", ""
+    events = run_agent(c, hws, c.post("/api/agent/sessions", {"ws": hws})[1]["id"], "Insist with its uses", on_approval=reject_all)[1]
+    done = [e for e in events if e["type"] == "tool_result" and e.get("name") == "finish"]
+    check("a larger edit holding a rejected change is not shown either, and the model is told to ask (the user's rule of 2026-11-28)",
+          len(held_cards) == 1 and done and "holds the change" in done[-1]["output"] and open(os.path.join(held, "README.md")).read() == "# Sample\n",
+          (len(held_cards), done[-1]["output"][:200] if done else events[-3:]))
     both = os.path.join(projects, "sneak-two")
     os.makedirs(both)
     for name, head in (("README.md", "# Sample\n"), ("NOTES.md", "# Notes\n")):
@@ -6279,6 +6294,13 @@ def test_repeat_and_stray(c, projects, gw_port):
         check("the rejected constant with its uses added is not sent back, but the card says it holds the rejected change",
               not sm.repeats_rejected(run, "t.py", whole) and sm.holds_rejected(run, "t.py", whole)
               and not sm.holds_rejected(run, "t.py", sm.edit_signature(old, "import time\n\ndef parse_ts(x):\n    return x * 60.0\n")))
+        check("a file name in bold code does not hide the prose after it from the mixed-word check (test 14, v3)",
+              sm.mixed_words("3. **`db.py`** — οι αλλαγές μέσω ενόςSingle writer, με (`BadInput`, `NotFound`).") == ["ενόςSingle"])
+        check("a request that something behaves exactly as now is checked even when it is the only one",
+              sm.SAME_BEHAVIOUR_RE.search("Without it, the script behaves exactly as now.") and not sm.SAME_BEHAVIOUR_RE.search("Add a --dry-run option."))
+        sm.APP.cfg["ask_tool"] = False
+        check("asking with ask_user where it is off tells the model to ask in its reply",
+              "write the question in your reply" in sm.execute_tool(types.SimpleNamespace(note_progress=lambda p: None), "ask_user", {})[2])
         check("a command naming two files with rejected changes names both", sm.names_rejected_files(
             types.SimpleNamespace(rejected=list(run.rejected) + [("b.py", first)]), "diff t.py b.py") == ["t.py", "b.py"])
         check("a command naming a file with a rejected change is found; another file is not",

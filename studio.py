@@ -7161,6 +7161,9 @@ def repeats_rejected(run, rel, sig):
 
 REJECTED_INSIDE = ("This change includes the change to {rel} you rejected earlier in this run{more}. "
                    "Accept only if you want it after all.")
+HOLDS_NOTE = ("Studio did not show this edit to the user: it holds the change to {rel} the user rejected in this run, with "
+              "more lines added. Do not make that change by any route unless the user says yes to it: ask the user what they would "
+              "prefer (end your turn with the question), or make a change without it, or stop and say what you would need.")
 REJECTED_FILE_COMMAND = ("This command names {rel}, where you rejected a change earlier in this run, so Studio asks even "
                          "with auto-run on: a command could make the rejected change without an edit card.")
 
@@ -7291,6 +7294,11 @@ def apply_edit(run, rel, path, old, new):
             return False, f"Not shown again: {rel}", REPEAT_NOTE.format(rel=rel)
         extra = {"hunks": hunks} if (hunks := hunks_for_approval(old, new)) else {}
         if holds_rejected(run, rel, sig):
+            if not getattr(run, "guided_since_reject", False):
+                # The user's rule of 2026-11-28: a rejected change is not shown again without a new yes, even inside a
+                # larger edit (on-r3 test 4 of the v3 benchmark sent the constant with its uses, and it was accepted).
+                run.emit("status", text="The model sent an edit holding a change you rejected; Studio did not show it and asked it to ask you.")
+                return False, f"Not shown: {rel}", HOLDS_NOTE.format(rel=rel)
             extra["warning"] = REJECTED_INSIDE.format(rel=rel, more=", with more lines added")
         run.last_parts = None
         decision, note = run.ask(kind="edit", path=rel, old=old or "", new=new, change=describe_change(old, new), **extra)
@@ -7983,13 +7991,32 @@ def rules_unchecked(run):
     from the first message ("list sorts high first, then by id", test 13) while reminders were on."""
     if not APP.cfg.get("rule_checks", True) or run.rules_noted or not run.changed or run.plan_mode or not run.tools_enabled:
         return False
-    return len(user_requests(run)) >= 2
+    asked = user_requests(run)
+    return len(asked) >= 2 or any(SAME_BEHAVIOUR_RE.search(t) for t in asked)
+
+
+# A request that something keeps behaving as it does: on-r1 test 22 of the v3 benchmark ("Without it, the script behaves
+# exactly as now") printed every command in plain runs too, and its summary said "behaves exactly as before".
+SAME_BEHAVIOUR_RE = re.compile(r"\bexactly as (?:now|before|it (?:does|did)|today)\b|\b(?:behaviou?r|output) (?:stays|remains|is) (?:the same|unchanged)\b|"
+                               r"\bsame (?:output|behaviou?r) as (?:now|before)\b|\bwithout changing (?:its|the|how)\b|"
+                               r"ακριβώς όπως (?:τώρα|πριν|σήμερα)|χωρίς να αλλάξει (?:η|το|τι|πώς)", re.I)
+SAME_BEHAVIOUR_NOTE = ("\nA request asks that something keeps behaving as it does («{clause}»). Check that by running the version "
+                       "from before your change and the new one with the same input and comparing their output character for character "
+                       "(recreate the old file from what you read, for example in a temporary folder), not by reading the code: any "
+                       "difference, even one extra line printed, breaks it.")
 
 
 def rules_note(run):
     asked = user_requests(run)
     shown = asked if len(asked) <= 10 else asked[:3] + asked[-7:]
-    return RULES_NOTE.format(requests="\n".join(f"{i}. " + (t[:600] + ("…" if len(t) > 600 else "")) for i, t in enumerate(shown, 1)))
+    note = RULES_NOTE.format(requests="\n".join(f"{i}. " + (t[:600] + ("…" if len(t) > 600 else "")) for i, t in enumerate(shown, 1)))
+    same = next((m for t in asked for m in [SAME_BEHAVIOUR_RE.search(t)] if m), None)
+    if same:
+        text = same.string
+        start = max(text.rfind(".", 0, same.start()) + 1, 0)
+        end = text.find(".", same.end())
+        note += SAME_BEHAVIOUR_NOTE.format(clause=" ".join(text[start:end if end > 0 else None].split())[:200])
+    return note
 
 
 def with_mixed_note(result, rel, new, old):
@@ -8415,6 +8442,9 @@ def execute_tool(run, name, args):
     if name in (getattr(run, "user_tools", None) or {}):
         fn = lambda run, args: tool_user(run, name, args)
     if fn is None:
+        if name == "ask_user":     # on-r3 test 4 of the v3 benchmark tried it where it is off, then sent the rejected change
+            return False, "No question tool", ("There is no ask_user tool here. To ask the user, write the question in your reply "
+                                               "and end your turn without a tool call; the user answers in the chat.")
         available = [tool for tool in TOOL_FUNCS if tool_enabled(tool)] + list(mcp_tools) + list(getattr(run, "user_tools", None) or {})
         return False, "Unknown tool", f"Unknown tool '{name}'. Available tools: {', '.join(available)}, finish."
     try:
@@ -10351,7 +10381,9 @@ RETRY_NOTE = "Studio note: your last reply was cut off or held an incomplete too
 MAX_CUT_OFF_RETRIES = 2
 SCRIPT_NOTE = ("Studio note: your last {what} mixed scripts or languages ({why}). Send it again, with Greek written "
                "only in the Greek alphabet: no Greek words in Latin letters (Greeklish), no Chinese or other characters. Keep code, commands and file names as they are.")
-NOT_PROSE_RE = re.compile(r"```.*?```|`[^`\n]*`|https?://\S+|\S*[/\\]\S*|\S+\.[A-Za-z0-9]{1,5}\b|\b[A-Za-z_]+\([^)]*\)", re.S)
+# Paths and file names stop at a backtick: «**`db.py`**» once matched as the file name «**`db.py», which made the closing
+# backtick an opening one, so the prose up to the next code span was taken for code and «ενόςSingle» passed (test 14, v3).
+NOT_PROSE_RE = re.compile(r"```.*?```|`[^`\n]*`|https?://[^\s`]+|[^\s`]*[/\\][^\s`]*|[^\s`]+\.[A-Za-z0-9]{1,5}\b|\b[A-Za-z_]+\([^)]*\)", re.S)
 GREEK_RE, LATIN_RE = re.compile(r"[\u0370-\u03ff\u1f00-\u1fff]"), re.compile(r"[A-Za-z]")
 # Common Greek words as they look in Latin letters; English hardly uses them, so they tell Greeklish from English.
 GREEKLISH_WORDS = {"kai", "einai", "den", "gia", "apo", "tin", "tis", "tou", "tous", "ton", "twn", "stin", "stis", "sto", "sta", "stous",
@@ -10982,6 +11014,8 @@ def take_guidance(run, history):
         history.append({"role": "user", "content": GUIDE_NOTE + "\n" + USER_EXTRAS_END + text})
     if messages:
         run.steered = True                # its next reply should act on it, not just say what it will do
+        if getattr(run, "rejected", None):
+            run.guided_since_reject = True    # the user wrote after rejecting: an edit holding the change is theirs to judge
     return len(messages)
 
 
@@ -11053,6 +11087,9 @@ def agent_loop(run):
                 run.emit("text_fixed", text=fixed)
             why = script_problem(run, result["content"])
             if why:
+                shown = drop_foreign(run, result["content"])
+                if shown != result["content"]:     # the draft stays in the chat, marked: without the stray words (test 35, v3)
+                    run.emit("text_fixed", text=shown)
                 run.emit("status", text="The reply mixed scripts or languages. Asking the model to write it again…")
                 run.emit("sent_back", why=why.split(". Write it in")[0][:300])       # the page marks the reply, so it does not look accepted
                 history.append({"role": "user", "content": SCRIPT_NOTE.format(what="reply", why=why)})

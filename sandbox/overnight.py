@@ -28,6 +28,7 @@ HERE = os.path.dirname(os.path.realpath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 import arena  # noqa: E402
+import guard_log  # noqa: E402
 
 PROMPTS = os.path.join(HERE, "prompts")
 CHECK_RUNNER = os.path.join(PROMPTS, "checks", "run.py")
@@ -292,6 +293,11 @@ class Runner:
             break
         events = self.transcript(session)
         json.dump(events, open(os.path.join(folder, "transcript.json"), "w", encoding="utf-8"), ensure_ascii=False)
+        try:            # what the guards caught, from the model's side of the chat (guard_log.py)
+            saved = json.load(open(os.path.join(os.path.dirname(self.config), "data", "sessions", f"{session}.json"), encoding="utf-8"))
+            guards = guard_log.lapses(saved.get("messages") or [], events)
+        except (OSError, ValueError):
+            guards = None
         engine = self.engine_info()
         final = []          # each turn's text as the chat shows it: Studio's text_fixed replaces what was streamed
         for e in events:
@@ -316,7 +322,7 @@ class Runner:
                   "calls": sum(len(r.get("calls", [])) for r in replies), "progress_calls": sum(r.get("progress", 0) for r in replies),
                   "prompt_max": max([r.get("prompt_max", 0) for r in replies] or [0]), "errors": sum(len(r.get("errors", [])) for r in replies),
                   "attempts": attempt, "engine": engine, "checks": [{"label": c[0], "ok": c[1], "detail": str(c[2])[:300]} for c in checks],
-                  "finished_at": time.time(), "reply": reply_text[:20000]}
+                  "finished_at": time.time(), "reply": reply_text[:20000], "guards": guards}
         self.save(result)
         cleanup(work, ws["id"], self)
         return result
