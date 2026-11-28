@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **A rejected change made by a command is caught too**: a command that changes a file the way you rejected earlier in
+  the run, without naming it (a script that builds the file name), is put back after it runs and shown to you again as
+  an edit card. It stays only on a new yes.
+- **Fixed**: when a small model's context filled up, older finish summaries were shortened to a marker, and a model
+  could copy that marker as its own answer. Only the text of older file writes is shortened now.
+
 ## 0.2.0 (2026-11-27)
 
 See [docs/RELEASE-0.2.0.md](docs/RELEASE-0.2.0.md).

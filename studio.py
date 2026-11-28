@@ -7187,6 +7187,63 @@ def names_rejected_file(run, command):
     return None
 
 
+REJECTED_BY_COMMAND = ("A command made the change to {rel} you rejected earlier in this run, without an edit card. Studio put "
+                       "the file back as it was before the command. Accept only if you want the change after all.")
+REJECTED_PUT_BACK = ("Studio note: that command changed {rel} the way the user rejected earlier in this run. Studio put the file back "
+                     "and showed the user the change; they rejected it again. Do not make this change by any route: ask the user "
+                     "what they want instead, change course, or stop.")
+REJECTED_KEPT = "Studio note: that command changed {rel} the way the user rejected earlier; the user saw it and accepted it this time."
+
+
+def rejected_files_before(run):
+    """{rel: text or None} of the files with a rejected change in this run, read before a command, so a command that makes
+    the change without naming the file (a script that builds the name, a tool that rewrites the folder) is caught after it
+    runs (check_rejected_after)."""
+    if not APP.cfg.get("repeat_check", True):
+        return {}
+    out = {}
+    for rel, _ in getattr(run, "rejected", []):
+        if rel in out:
+            continue
+        try:
+            out[rel] = current_text(resolve(run.ws, rel, nofollow=True))
+        except (ApiError, OSError):
+            continue
+    return out
+
+
+def check_rejected_after(run, before):
+    """After a command: a file in `before` that now holds a change the user rejected is put back and the change is shown
+    as an edit card with a warning; kept only on a new yes. Returns notes for the model."""
+    notes = []
+    for rel, old in before.items():
+        try:
+            path = resolve(run.ws, rel, nofollow=True)
+            now = current_text(path)
+        except (ApiError, OSError):
+            continue
+        if now is None or now == old:
+            continue
+        sig = edit_signature(old, now)
+        if not (repeats_rejected(run, rel, sig) or holds_rejected(run, rel, sig)):
+            continue
+        if old is None:
+            os.remove(path)
+        else:
+            write_bytes(path, old.encode("utf-8"))
+        run.emit("status", text=f"A command made the change to {rel} you rejected; Studio put the file back and asks you.")
+        decision, note = run.ask(kind="edit", path=rel, old=old or "", new=now, change=describe_change(old, now),
+                                 warning=REJECTED_BY_COMMAND.format(rel=rel))
+        if decision == "accept":
+            cid = make_checkpoint(run.ws, {rel: old})
+            write_bytes(path, now.encode("utf-8"))
+            run.emit("file_changed", path=rel, checkpoint=cid, action="create" if old is None else "edit", change=describe_change(old, now))
+            notes.append(REJECTED_KEPT.format(rel=rel))
+        else:
+            notes.append(REJECTED_PUT_BACK.format(rel=rel) + (f" Note: {note}" if note else ""))
+    return notes
+
+
 def edits_alike(sig, before):
     """How much of two edits' added lines are the same, counting lines 90% alike as one (a Strata model's third try after a
     rejection renamed SECONDS_PER_MINUTE to _SECONDS_PER_MINUTE, test 4 of 2026-11-27)."""
@@ -8026,6 +8083,7 @@ def tool_run(run, args):
     problem = powershell_problem(run.ws, command)
     if problem:
         return False, "Not run: bash syntax in PowerShell", problem
+    touched = None
     if run.plan_mode and not looks_only(command, detect_test_command(run.ws["path"])):
         decision, note = run.ask(kind="command", command=command, plan=True)
         if decision != "accept":
@@ -8041,7 +8099,11 @@ def tool_run(run, args):
             if decision != "accept":
                 return False, "Command skipped", "The user rejected this command." + (f" Note: {note}" if note else "")
     run.changed = run.changed or writes_files(command)
+    watched = {} if touched else rejected_files_before(run)       # a command the user allowed knowing it names the file is theirs
     result = run_online_if_allowed(run, command)
+    if watched and (notes := check_rejected_after(run, watched)):
+        ok, summary, text = result
+        result = ok, summary, text + "\n" + "\n".join(notes)
     if WAIT_COMMAND.fullmatch(command.strip()) and APP.cfg.get("turn_guard", True):
         run.waits = getattr(run, "waits", 0) + 1
         if run.waits >= WAIT_NOTE_AFTER:
@@ -9814,13 +9876,18 @@ def prompt_chars(obj):
     return len(json.dumps(obj, ensure_ascii=False))
 
 
+TRIMMED_WRITES = ("write_file", "replace_in_file", "write_document")
+
+
 def trim_old_writes(messages, keep):
-    """Older write_file and replace_in_file calls keep their path but not the text they wrote: the file holds it."""
+    """Older write_file and replace_in_file calls keep their path but not the text they wrote: the file holds it.
+    Only those: a finish summary or a command is held by no file, and Inkling copied "[1298 characters, trimmed…]" as its
+    own finish summary after seeing its older ones trimmed (2026-11-28)."""
     idx = [i for i, m in enumerate(messages) if m.get("role") == "assistant" and m.get("tool_calls")]
     for i in (idx[:-keep] if keep else idx):
         for call in messages[i]["tool_calls"]:
             function = call.get("function") or {}
-            if len(function.get("arguments") or "") < 1500:
+            if function.get("name") not in TRIMMED_WRITES or len(function.get("arguments") or "") < 1500:
                 continue
             try:
                 args = json.loads(function["arguments"])

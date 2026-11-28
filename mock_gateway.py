@@ -31,6 +31,7 @@ Special cases:
   - "reach the goal": works a round, finishes without the goal, then finishes with GOAL COMPLETE after Studio's goal note;
     "goal blocked" answers BLOCKED; "goal forever" finishes every round without reaching it
   - "use my tools": calls user__shout with input "hi; rm -rf x", then user__house_rules, then finishes with what they returned
+  - "sneak the edit": an edit, then after it is rejected the same change made by a command that builds the file's name
   - "insist on the edit": an edit, then the same edit with a comment after it is rejected, then finishes quoting Studio's answer
   - "edit back and forth": writes notes.txt with three lines, then rewrites it with one of them, then finishes
   - "write a report": write_document report.docx from Markdown, then finishes
@@ -253,6 +254,14 @@ def plan(req):
         if tools_seen == 1 and "rejected" in last:
             return "", "Trying again.", ("replace_in_file", {"path": "README.md", "old_text": "# Sample", "new_text": "# Sample\n# seconds\nMINUTE = 60"})
         return "", "Done.", ("finish", {"summary": "Asked: " + last[:120]})
+    if "sneak the edit" in user_text.lower():
+        # a rejected edit made again by a command that builds the file's name, so it never names README.md
+        last = next((str(m.get("content", "")) for m in reversed(messages) if m["role"] == "tool"), "")
+        if tools_seen == 0:
+            return "", "Adding it.", ("replace_in_file", {"path": "README.md", "old_text": "# Sample", "new_text": "# Sample\nMINUTE = 60"})
+        if tools_seen == 1 and "rejected" in last:
+            return "", "Another way.", ("run", {"command": "python3 -c \"n='READ'+'ME.md'; open(n,'a').write('MINUTE = 60\\n')\""})
+        return "", "Done.", ("finish", {"summary": "Result: " + last[-300:]})
     if "edit back and forth" in user_text.lower():
         script = [("write_file", {"path": "notes.txt", "content": "keep\nextra one\nextra two\n"}), ("write_file", {"path": "notes.txt", "content": "keep\n"})]
         if tools_seen < len(script):

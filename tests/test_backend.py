@@ -6185,6 +6185,31 @@ def test_repeat_and_stray(c, projects, gw_port):
     done = [e for e in events if e["type"] == "tool_result" and e.get("name") == "finish"]
     check("and the model is told to ask or change course", done and "did not show this change" in done[-1]["output"], done[-1]["output"] if done else events[-3:])
     check("the file is unchanged", open(os.path.join(folder, "README.md")).read() == "# Sample\n")
+    for answer in ("reject", "accept"):
+        sneak = os.path.join(projects, f"sneak-{answer}")
+        os.makedirs(sneak)
+        with open(os.path.join(sneak, "README.md"), "w") as fh:
+            fh.write("# Sample\n")
+        sws = c.post("/api/workspace/open", {"path": sneak})[1]["workspace"]["id"]
+        cards = []
+
+        def first_no(ev):
+            cards.append(ev)
+            return ("reject" if len(cards) == 1 else answer), ""
+        events = run_agent(c, sws, c.post("/api/agent/sessions", {"ws": sws})[1]["id"], "Sneak the edit", auto_commands=True,
+                           on_approval=first_no)[1]
+        text = open(os.path.join(sneak, "README.md")).read()
+        done = [e for e in events if e["type"] == "tool_result" and e.get("name") == "finish"]
+        out = done[-1]["output"] if done else ""
+        if answer == "reject":
+            check("a command that makes a rejected change without naming the file (auto-run on) is caught: the user is asked again",
+                  len(cards) == 2 and "without an edit card" in (cards[1].get("warning") or "") and "MINUTE = 60" in cards[1].get("new", ""),
+                  [(e.get("kind"), e.get("warning")) for e in cards])
+            check("rejected again, the file is put back as it was", text == "# Sample\n", text)
+            check("and the model is told not to make it by any route", "by any route" in out, out[-200:])
+        else:
+            check("accepted the second time, the command's change stays, with an undo point",
+                  text == "# Sample\nMINUTE = 60\n" and any(e["type"] == "file_changed" and e.get("checkpoint") for e in events), text)
     saved, sm.APP = sm.APP, types.SimpleNamespace(cfg={"script_check": True})
     try:
         old = "import time\n\ndef parse_ts(x):\n    return x * 60\n"
@@ -6272,6 +6297,13 @@ def test_repeat_and_stray(c, projects, gw_port):
         check("near a small model's limit the older tool output is shortened, the newest kept",
               history[2]["content"].startswith("[older") and history[-1]["content"].endswith("x = 1\n") and not any(k == "compacted" for k, _ in seen),
               [m["content"][:30] for m in history if m["role"] == "tool"])
+        calls = [{"role": "assistant", "content": "", "tool_calls": [{"id": f"w{n}", "type": "function", "function": {
+            "name": name, "arguments": json.dumps({key: "Ένα μεγάλο κείμενο. " * 100})}}]}
+            for n, (name, key) in enumerate([("write_file", "content"), ("finish", "summary"), ("run", "command")])]
+        sm.trim_old_writes(calls, 0)
+        check("older writes lose the text the file holds, but never a finish summary or a command",
+              "trimmed to save room" in calls[0]["tool_calls"][0]["function"]["arguments"]
+              and not any("trimmed" in m["tool_calls"][0]["function"]["arguments"] for m in calls[1:]))
         real_call = sm.call_model
         sm.call_model = lambda run, messages: asked.append(messages[-1]["content"]) or {"content": "Summary: the user asked to read every file; eight were read.", "tool_calls": []}
         real_prompt, sm.build_system_prompt = sm.build_system_prompt, (lambda run: "system")
