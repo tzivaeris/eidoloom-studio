@@ -1860,7 +1860,7 @@ if sys.argv[3] == '1': open(os.path.join(d, 'paper.pdf'), 'wb').write(studio.off
     await page.click('#goal-chip');
     check('and the Goal window has no Codex allowance', await page.waitForSelector('.goal-form', { timeout: 5000 }).then(() => true, () => false) && await page.locator('.goal-cx').count() === 0);
     await page.click('.dialog button:has-text("Cancel")');
-    check('a Strata model shows it too, with the Manager\'s default (Codex\'s Ultra is not one of its levels)', await page.locator('#effort-chip:not(.hidden)').count() === 1
+    check('a Strata model shows it too, with the gateway\'s default (Codex\'s Ultra is not one of its levels)', await page.locator('#effort-chip:not(.hidden)').count() === 1
       && (await page.textContent('#effort-chip')).includes('Medium'));
     await page.click('#effort-chip');
     check('offering None to Extra high', await page.locator('.menu-ctx .mi').filter({ hasText: /^(✓ )?(None|Low|Medium|High|Extra high)/ }).count() >= 5);

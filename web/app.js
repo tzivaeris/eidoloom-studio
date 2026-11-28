@@ -496,7 +496,7 @@ async function paneCard(box) {
   const paint = d => {
     const pool = d.pool;
     const now = d.strata_server === 'own' ? 'Studio talks to Strata\'s own server, which someone else started, so the share is the one it started with. To choose it here, let Studio start Strata (strata_dir in studio.config.json).'
-      : !pool ? 'The Ollama Manager does not answer, so the current share is unknown.'
+      : !pool ? 'The Strata gateway does not answer, so the current share is unknown.'
       : !pool.running ? 'Strata is not loaded now; it starts with the chosen share.'
       : pool.active_mib >= 8192 ? `Strata is running with ${gb(pool.active_mib)} kept free for tools.` : 'Strata is running with the whole card.';
     const choices = el('div', { class: 'card-choices', role: 'radiogroup', 'aria-label': 'How the card is shared' }, ...CARD_CHOICES.map(([id, name, text]) =>
@@ -512,7 +512,7 @@ async function paneCard(box) {
     const pending = d.pending ? el('div', { class: 'card-pending' }, el('span', { html: ico('clock', 14) }),
       el('span', { class: 'grow', text: d.runs > 0 ? `Takes effect the next time Strata starts: when it unloads after being idle, or with Restart once the ${d.runs > 1 ? d.runs + ' agent runs end' : 'agent run ends'}.`
         : 'Takes effect the next time Strata starts: when it unloads after being idle, or now. A restart reloads Strata, about half a minute.' }), restart) : null;
-    // The Manager's own idle unload: Studio's cleanup after a run frees the tools, and this frees Strata itself.
+    // The gateway's own idle unload: Studio's cleanup after a run frees the tools, and this frees Strata itself.
     const idle = d.strata_idle == null ? null : el('label', { class: 'card-idle' }, el('span', { text: 'Unload Strata after' }),
       el('select', { class: 'dlg-input', 'aria-label': 'Unload Strata after this long with nothing to do',
         onchange: async e => { try { paint(await POST('/api/card/strata_idle', { minutes: parseInt(e.target.value, 10) })); toast('Saved', 'success', 1500); } catch (err) { errToast(err, 'Not saved'); } } },
@@ -1259,8 +1259,8 @@ $('#model-select').addEventListener('change', e => {
 /* Codex's reasoning effort for this chat: a chip in the message box while a Codex model is picked, with exactly the levels
    that model offers (low to ultra) and its default. Saved per chat, like the gear's effort for Studio's own models. */
 const EFFORT_NAMES = { none: 'None', minimal: 'Minimal', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max', ultra: 'Ultra' };
-/* Strata models think before answering; the chat's effort goes to the Manager as reasoning_effort, and without one the
-   Manager's profile decides (medium). Ollama models vary in whether they think, so they get no chip. */
+/* Strata models think before answering; the chat's effort goes to the gateway as reasoning_effort, and without one the
+   gateway's profile decides (medium). Ollama models vary in whether they think, so they get no chip. */
 const STRATA_EFFORTS = [
   { value: 'none', description: 'Answer directly, without thinking first' },
   { value: 'low', description: 'Think briefly' },
@@ -1550,12 +1550,12 @@ function modelServerCard(onSaved) {
         try { const p = await POST('/api/admin/model_server/test', body(key.value || undefined)); say(describe(p), p.ok && p.count ? 'ok' : 'err'); } catch (e) { say(e.message, 'err'); }
       } }, 'Test'),
       el('button', { class: 'btn sm primary', onclick: () => save(addr.value.trim(), key.value || undefined) }, 'Save'), result),
-    el('small', { class: 'muted', text: 'Usual addresses: Ollama :11434, Strata or llama.cpp :8080 (:18080 when the Ollama Manager starts Strata), vLLM :8000, LM Studio :1234, Ollama Manager :8787. An address ending in /v1 works too.' }));
+    el('small', { class: 'muted', text: 'Usual addresses: Ollama :11434, Strata or llama.cpp :8080 (:18080 behind a Strata gateway), vLLM :8000, LM Studio :1234, Strata gateway :8787. An address ending in /v1 works too.' }));
   load();
   return card;
 }
 /* An admin names a model for everyone (config model_names): Quartz for swift-1.5-iq3_xxs. An empty name goes back to
-   the default. (Strata without the Manager, 2026-11-24.) */
+   the default. (Strata without the gateway, 2026-11-24.) */
 async function renameModel(m, after) {
   const v = await promptBox(`Name for ${m.name}`, m.label && m.label !== m.name ? m.label : '', 'Quartz');
   if (v === null || v === undefined || v === false) return;
@@ -5887,7 +5887,7 @@ function renderWelcome() {
   if (S.config && S.models && (S.config.gateway_ok === false || !S.models.length)) {      // nothing to talk to yet: say how to connect one
     pm.append(el('div', { class: 'w-connect' },
       el('b', { text: 'No model server is connected' }),
-      el('p', { class: 'muted', text: isAdmin() ? 'The agent needs a model server: Ollama, llama.cpp, vLLM, LM Studio or the Ollama Manager. Studio looks for one on this machine.'
+      el('p', { class: 'muted', text: isAdmin() ? 'The agent needs a model server: Ollama, llama.cpp, vLLM, LM Studio or the Strata gateway. Studio looks for one on this machine.'
         : 'The agent needs a model server. Ask an admin of this Studio to connect one.' }),
       isAdmin() ? el('button', { class: 'btn primary', onclick: () => openAccount('models') }, 'Connect a model server') : null));
   }
@@ -8184,7 +8184,7 @@ function showShortcuts() {
     buttons: [{ label: 'Close', value: false, kind: 'primary' }] });
 }
 /* Chat settings: reasoning effort for this chat, a notice when a run ends while you are elsewhere, and dictation */
-const EFFORT_LABELS = [['', 'The Manager\'s default'], ['none', 'None: answer directly'], ['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['xhigh', 'Highest']];
+const EFFORT_LABELS = [['', 'The model\'s default'], ['none', 'None: answer directly'], ['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['xhigh', 'Highest']];
 async function chatSettings() {
   const effort = el('select', { class: 'dlg-input' }, EFFORT_LABELS.map(([v, l]) => el('option', { value: v, text: l }))); effort.value = A.effort || '';
   const notify = el('select', { class: 'dlg-input' }, [['off', 'Off'], ['notify', 'A notification'], ['sound', 'A notification and a sound']].map(([v, l]) => el('option', { value: v, text: l }))); notify.value = lsGet('studio.notify') || 'off';
@@ -8192,7 +8192,7 @@ async function chatSettings() {
   const dict = el('input', { type: 'checkbox', checked: lsGet('studio.dictation') === '1' ? '' : null, disabled: supported ? null : '' });
   const lang = el('select', { class: 'dlg-input' }, [['', 'The browser\'s language'], ['el-GR', 'Greek'], ['en-US', 'English']].map(([v, l]) => el('option', { value: v, text: l }))); lang.value = lsGet('studio.dictationLang') || '';
   const body = el('div', { class: 'task-form' },
-    el('label', { class: 'task-field' }, el('span', { text: 'Reasoning effort for this chat' }), effort, el('small', { class: 'dlg-note', text: 'How long the model thinks before it answers. More is slower and often better on hard work. A Manager profile set to no thinking always wins.' })),
+    el('label', { class: 'task-field' }, el('span', { text: 'Reasoning effort for this chat' }), effort, el('small', { class: 'dlg-note', text: 'How long the model thinks before it answers. More is slower and often better on hard work. A gateway profile set to no thinking always wins.' })),
     el('label', { class: 'task-field' }, el('span', { text: 'When a run ends or waits for you while you are in another tab or window' }), notify),
     el('div', { class: 'task-field' }, el('span', { text: 'Dictation' }), el('label', { class: 'dlg-check' }, dict, ' Show a microphone button in the chat box'), lang,
       el('small', { class: 'dlg-note', text: supported ? 'In Chrome and Edge your voice is sent to Google or Microsoft to be turned into text; it never goes through Studio.' : 'This browser cannot turn speech into text. Chrome, Edge and Safari can.' })));
@@ -8433,7 +8433,7 @@ function dashToggle(open) {
   if (open) { if (!D.built) dashBuild(); dashDetachIcon(); dashPosition(); }
   dashPoll();
 }
-// The Ollama Manager's colors. A load gauge turns orange near full, and red when it shows 100.
+// The Strata gateway's colors. A load gauge turns orange near full, and red when it shows 100.
 function dashGauge(key, percent, value, unit, base, { fixed = false } = {}) {
   const g = D.built.gauges[key], p = Math.max(0, Math.min(100, percent || 0));
   g.ring.style.setProperty('--value', p.toFixed(1));
@@ -8458,7 +8458,7 @@ function dashRender(d) {
   dashGauge('ctx', gen.context_percent, gen.context_percent != null ? String(Math.round(gen.context_percent)) : '–', gen.context_percent != null ? '%' : '', 'blue');
   dashGauge('temp', temp ? temp / 110 * 100 : 0, temp ? String(Math.round(temp)) : '–', temp ? '°C' : '', 'coral');
   dashGauge('press', press, pc(press), has ? '%' : '', ['green', 'blue', 'yellow', 'orange', 'red'].includes((m.strain || {}).band) ? m.strain.band : 'blue', { fixed: true });
-  // The Manager reports a model's planned placement even when it isn't loaded.
+  // The gateway reports a model's planned placement even when it isn't loaded.
   const inMemory = has && d.state !== 'off';
   const rows = [['Model in VRAM', inMemory ? fmtGB(place.vram) : '–'], ['Model in RAM', inMemory ? fmtGB(place.ram) : '–'], ['Free RAM', has ? fmtGB(sys.available) : '–'],
     ['Pressure', has && m.strain ? `${m.strain.label || ''} · ${m.strain.source || ''}` : '–'],
@@ -8487,7 +8487,7 @@ function dashLoaded(box, d, m) {
       : [el('small', { class: 'dash-res-none', text: 'No model or tool is loaded.' })]),
     ...dashCleanup(d, gb));
 }
-/* The failsafe after the last run (cleanup_main): what it freed, for ten minutes, and when the Manager unloads Strata. */
+/* The failsafe after the last run (cleanup_main): what it freed, for ten minutes, and when the gateway unloads Strata. */
 function dashCleanup(d, gb) {
   const out = [], c = d.cleanup, ago = c ? Date.now() / 1000 - c.at : Infinity;
   if (c && ago < 600) {

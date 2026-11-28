@@ -3,7 +3,7 @@
 
 The agent works in sandbox/workspace. Its commands and terminals run in a throw-away container that has
 no network and only that folder mounted, and grading uses a second container plus hidden tests the
-agent can never read. Same container limits as the Ollama Manager arena."""
+agent can never read. Same container limits as the author's model arena."""
 import argparse
 import datetime
 import hashlib

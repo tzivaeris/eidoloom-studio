@@ -81,7 +81,7 @@ def catalog(root):
          "auto_ok": False, "note": "Gets the newest code, rebuilds the engine for the card and updates the models' settings (its own setup.sh --update). "
                                    "Its models stay; the earlier engine is kept for rolling back."},
         {"id": "strata", "group": "models", "name": "Strata", "kind": "localmodel", "key": "strata_dir", "home": "", "auto_ok": False,
-         "note": "The same through Strata's own setup.sh --update. A Strata the Ollama Manager runs is updated by the Manager instead."},
+         "note": "The same through Strata's own setup.sh --update. A Strata that a Strata gateway runs is updated by that gateway instead."},
         # ---- Tool servers and engines
         {"id": "context7", "group": "engines", "name": "Context7 tool server", "kind": "npx", "package": "@upstash/context7-mcp", "servers": ["context7"], "auto_ok": True},
         {"id": "playwright-mcp", "group": "engines", "name": "Browser tool server (Playwright MCP)", "kind": "npx", "package": "@playwright/mcp", "servers": ["browser"], "auto_ok": True},
@@ -327,7 +327,7 @@ class Updates:
         path = self.local_path(item)
         if not path:
             return {"current": "not installed by Studio", "latest": "", "available": False,
-                    "detail": "Install it in Tools & setup; a Strata the Ollama Manager runs is updated there."}
+                    "detail": "Install it in Tools & setup; a Strata that a Strata gateway runs is updated there."}
         self.sh(["git", "-C", path, "fetch", "--quiet", "--tags", "origin"], timeout=300)
         branch = self.sh(["git", "-C", path, "rev-parse", "--abbrev-ref", "origin/HEAD"], check=False)[1].strip() or "origin/main"
         here = self.sh(["git", "-C", path, "log", "-1", "--format=%h %cs"])[1]

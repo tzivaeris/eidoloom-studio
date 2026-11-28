@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scripted stand-in for the Ollama Manager gateway, used by the tests.
+"""Scripted stand-in for the Strata gateway, used by the tests.
 
 Usage: python3 mock_gateway.py [port]    (default 8799)
 
@@ -12,7 +12,7 @@ Special cases:
   - GET /_mock/requests returns a summary of every chat request received
   - POST /_mock/bias {"refuse": true} answers a request with logit_bias by 400, like Strata's split engine
   - MOCK_CONTEXT_TOKENS in the environment: report that context size on /api/strata/status
-  - MOCK_STRATA=1: Strata's own server with no Manager (MOCK_STRATA_MODEL names its model, MOCK_STRATA_LOG gets the
+  - MOCK_STRATA=1: Strata's own server with no gateway (MOCK_STRATA_MODEL names its model, MOCK_STRATA_LOG gets the
     engine's loading lines) (/health, /v1/status, /v1/load, /v1/unload, /slots; GET or POST
     /_mock/strata reads or changes its state; MOCK_STRATA_LOAD_S makes the first request load for that long)
   - MOCK_OPENAI_ONLY=1: only the OpenAI API (/v1/models, /v1/chat/completions), like llama.cpp, vLLM or LM Studio;
@@ -81,8 +81,8 @@ def strata_status():
     return {"running": share >= 1, "health": {"loaded": share >= 1}, "job": job}
 LOCK = threading.Lock()
 COMFY = {"busy": False}
-# The Manager's Subagent pool, for Studio's graphics card setting; off until a test posts /_mock/card.
-# MOCK_STRATA=1: Strata's own server (serve/server.py) with no Manager in front: /health, /v1/models, /v1/status,
+# The gateway's Subagent pool, for Studio's graphics card setting; off until a test posts /_mock/card.
+# MOCK_STRATA=1: Strata's own server (serve/server.py) with no gateway in front: /health, /v1/models, /v1/status,
 # /v1/load, /v1/unload and /slots, one model, loaded by the first chat request (MOCK_STRATA_LOAD_S seconds).
 STRATA_OWN = {"model": os.environ.get("MOCK_STRATA_MODEL") or "swift-1.5-iq3_xxs", "loaded": False, "started": int(time.time()), "requests": 0, "in_flight": 0,
               "last_request_at": None, "unloads": 0, "loads": 0, "load_s": float(os.environ.get("MOCK_STRATA_LOAD_S") or 0)}
@@ -423,7 +423,7 @@ class Handler(BaseHTTPRequestHandler):
         return json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
 
     def strata_own(self):
-        """Strata's own server: answers what it has, refuses Ollama's and the Manager's routes (MOCK_STRATA=1)."""
+        """Strata's own server: answers what it has, refuses Ollama's and the gateway's routes (MOCK_STRATA=1)."""
         if not os.environ.get("MOCK_STRATA"):
             return False
         path, get = self.path, self.command == "GET"
@@ -461,13 +461,13 @@ class Handler(BaseHTTPRequestHandler):
             finally:
                 STRATA_OWN.update(in_flight=STRATA_OWN["in_flight"] - 1, last_request_at=int(time.time()))
         elif (path.startswith("/slots/0?action=") and not get) or path.startswith("/_mock/"):
-            return False                                     # the same session files as the Manager's engine, and the mock's own controls
+            return False                                     # the same session files as the gateway's engine, and the mock's own controls
         else:
             self.send_json({"error": {"message": "not found"}}, 404)
         return True
 
     def openai_only(self):
-        """MOCK_OPENAI_ONLY=1 plays llama.cpp, vLLM or LM Studio: no Ollama or Manager API, only /v1/*, and with
+        """MOCK_OPENAI_ONLY=1 plays llama.cpp, vLLM or LM Studio: no Ollama or gateway API, only /v1/*, and with
         MOCK_API_KEY every request needs that key as a Bearer token."""
         if not os.environ.get("MOCK_OPENAI_ONLY"):
             return False
@@ -546,7 +546,7 @@ class Handler(BaseHTTPRequestHandler):
             BIAS["refused"] += 1
             self.send_json({"error": {"message": "logit_bias: not supported by the all-cards split engine", "type": "invalid_request_error"}}, 400)
         elif self.path == "/v1/chat/completions":
-            if ENGINE["on"] and not ENGINE["loaded"]:      # a request loads the engine, as the Manager does
+            if ENGINE["on"] and not ENGINE["loaded"]:      # a request loads the engine, as the gateway does
                 ENGINE.update(loaded=True, pid=ENGINE["pid"] + 1)
             self.chat(req)
         elif self.path == "/_mock/engine":

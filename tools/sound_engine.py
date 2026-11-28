@@ -2,7 +2,7 @@
 """Studio's sound-effects engine: MOSS-SoundEffect v2.0 (OpenMOSS, Apache 2.0; 1.3B DiT, 48 kHz, up to 30 s) behind a small
 local HTTP API on 127.0.0.1, like tools/voice_engine.py. It loads the model when a job needs it and unloads after
 SOUND_IDLE_S idle seconds. When Strata holds the graphics card (Studio's "Strata first" setting) it unloads an idle Strata
-through the Ollama Manager, makes the sounds, and gives the card back straight after.
+through the Strata gateway, makes the sounds, and gives the card back straight after.
 
   GET  /health
   POST /make   {prompt, seconds, out, format: mp3|wav, steps}  -> {job}
@@ -91,8 +91,8 @@ def make_room(job):
             time.sleep(1)
         state["made_room"] = True
         return True
-    except Exception as exc:                  # noqa: BLE001 - no Manager: wait as before
-        print(f"could not ask the Manager to unload Strata: {exc}", flush=True)
+    except Exception as exc:                  # noqa: BLE001 - no gateway: wait as before
+        print(f"could not ask the gateway to unload Strata: {exc}", flush=True)
         return False
 
 

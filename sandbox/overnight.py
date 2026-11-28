@@ -328,7 +328,7 @@ class Runner:
         self.log(f"{result['model']} {result['test']} {result['status']} {result['seconds']}s reason={result['reason']} turns={result['turns']}")
 
     def free_gpu_for_ollama(self):
-        """Strata holds most of the card and the Manager only clears the way in the other direction. Without this, an Ollama model spills into RAM."""
+        """Strata holds most of the card and the gateway only clears the way in the other direction. Without this, an Ollama model spills into RAM."""
         if not (self.gateway_json("/api/strata/status") or {}).get("running"):
             return
         parts = urllib.parse.urlsplit(self.gateway)

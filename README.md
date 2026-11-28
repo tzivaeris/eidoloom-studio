@@ -46,7 +46,7 @@ A real run with a local Strata model, uncut, with captions added, at 1.6× speed
 - **A sandbox per folder.** Switch it on, and the agent's commands and terminals run in that folder's own Docker
   container, with the internet on, off, or only for installing packages.
 - **Several people.** Admins invite users; each user gets a private space, always sandboxed. Folders can be shared with
-  rights per person, and a waiting line takes turns on the one model.
+  rights per person, and a waiting line takes turns on the one model ([Working together](#working-together)).
 - **Folders on your own computer, Windows or Linux.** Studio runs on a Linux server, but a person can work in a folder
   on their own PC: the small `studio-helper` program connects it, and the agent's commands and terminals then run on
   that computer. See [Folders on your own computer](#folders-on-your-own-computer).
@@ -278,6 +278,32 @@ chats.
 | `strata_idle_minutes` | With Strata, unload the model after this many minutes without requests; `0` never. |
 
 Every other setting and its default is in `DEFAULT_CONFIG` near the top of `studio.py`.
+
+## Working together
+
+Studio is made for a team that shares one machine and one model.
+
+- **Accounts.** Admins invite people with a link. Each person gets a private space for their folders, chats,
+  terminals and skills. Their agent commands and terminals always run in a sandbox.
+- **Shared folders.** The **Share** button in the top bar gives a folder to other people, with a switch per person for
+  each right: Change files, Run the agent, Terminal, Delete and Manage people. With all of them on, a person is a
+  co-owner. Shared folders appear under **Shared with me** in Open folder, and a folder on someone's own computer can
+  be shared too. Chats stay private until their owner shares one; then everyone in the folder can read it and carry it on.
+- **The waiting room.** One model can serve one agent run at a time, so the agent has a single seat. Editing, terminals
+  and Git never wait. The people icon opens three tabs:
+  - **Line:** who holds the seat, everyone's place and an estimate of their wait, and **Finish my turn**. Admins can
+    move people up or down, or remove them.
+  - **Chat:** one conversation for everyone and one for each pair of people. These messages never reach the model.
+  - **People:** who is here now.
+
+  Your turn, a private message and a chat passed to you also show a notice or play a sound when the tab is in the
+  background.
+- **Passing a chat.** **Pass this chat to someone** in the chat list sends it to another person. If they accept, they
+  get a copy of the chat and of its folder in their own space, with its undo points and attachments. The sender's chat
+  and folder stay as they were.
+- **Every window in step.** Runs live on the server, so closing the browser does not stop one, and any window can
+  reattach. Approvals, chats, terminals, saved files, Git and settings follow you across your windows and devices,
+  including your phone.
 
 ## Reaching it from other computers
 

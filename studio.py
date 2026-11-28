@@ -66,8 +66,8 @@ DEFAULT_CONFIG = {
                                   # time, on the gateway's port, and switches profiles when a chat picks another; empty: Studio does not
     "polystrata_dir": "",         # a PolyStrata checkout: its models (terminal/strata-*.json) are started like Strata's profiles
     "local_port": 0,              # the port Studio starts Strata's or PolyStrata's server on; 0: the gateway's own port (the
-                                  # server is then the gateway). Set, those models sit beside the gateway's (Ollama, the Manager)
-    "strata_tools_reserve_mib": 9216,   # Graphics card → Tools ready, when Studio starts Strata: VRAM left free for pictures and voices    # Strata's own server (no Manager): Studio unloads the model after this long without requests; 0 never            # sent as "Authorization: Bearer ..." to model servers that need one (vLLM --api-key, llama.cpp --api-key)
+                                  # server is then the gateway). Set, those models sit beside the gateway's (Ollama, the gateway)
+    "strata_tools_reserve_mib": 9216,   # Graphics card → Tools ready, when Studio starts Strata: VRAM left free for pictures and voices    # Strata's own server (no gateway): Studio unloads the model after this long without requests; 0 never            # sent as "Authorization: Bearer ..." to model servers that need one (vLLM --api-key, llama.cpp --api-key)
     "workspace_roots": ["~/Projects"],
     "default_model": "quartz:strata",
     "max_turns": 40,
@@ -94,7 +94,7 @@ DEFAULT_CONFIG = {
     "live_view": True,
     "script_check": True,
     "script_ban": True,           # Strata models: tokens of Chinese, Japanese, Korean and Cyrillic text banned by logit_bias (script_ban_bias)
-    "strata_vocab": "",           # the Strata tokenizer's vocab.json; empty: found from the Manager's or the checkout's profiles
+    "strata_vocab": "",           # the Strata tokenizer's vocab.json; empty: found from the gateway's or the checkout's profiles
     "edit_checks": True,
     "stable_prompt": True,
     "session_cache": True,        # save each chat's engine state to disk (Strata session files) and restore it after a reload
@@ -158,7 +158,7 @@ TERM_BUFFER = 64 * 1024
 TERM_IDLE_S = 2 * 3600
 DEFAULT_STRATA_PROFILE = "qwen3.8-flash-next:125b-strata"
 ID_RE = re.compile(r"^[0-9a-f]{6,32}$")
-GATEWAY_HEADERS = {"Content-Type": "application/json", "X-Application-Name": "Strata Studio"}   # keeps the old name: the Manager exempts this value from its long-agent guard
+GATEWAY_HEADERS = {"Content-Type": "application/json", "X-Application-Name": "Strata Studio"}   # keeps the old name: the gateway exempts this value from its long-agent guard
 DISCONNECT_ERRORS = (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, TimeoutError)
 SANDBOX_LOCK = threading.Lock()
 SANDBOX_NETWORKS = ("off", "install", "on")
@@ -872,7 +872,7 @@ def waiting_room_loop():
 
 
 def external_activity_loop():
-    """Strata can also be used from the Manager, its arena or the bridge, which this lock cannot stop."""
+    """Strata can also be used from the gateway, its arena or the bridge, which this lock cannot stop."""
     while True:
         time.sleep(5)
         try:
@@ -915,7 +915,7 @@ class App:
         self.active = {}                       # workspace id -> Run
         self.models_cache = {"t": 0.0, "models": [], "ok": False}
         self.strata_models = set()          # models served by Strata's own server (gateway_kind "strata")
-        self.gateway_kind = ""            # "ollama" (Ollama or the Manager) or "openai" (llama.cpp, vLLM, LM Studio), from the last model list
+        self.gateway_kind = ""            # "ollama" (Ollama or the gateway) or "openai" (llama.cpp, vLLM, LM Studio), from the last model list
         self.stream_chars = 0                  # model text streamed so far, for the dashboard's speed gauge
         self.stream_at = 0.0
         self.load_times = read_json(os.path.join(self.data_dir, "load_times.json"), {})   # model -> seconds its last load took
@@ -1010,9 +1010,9 @@ APP = None
 
 
 # ---------------------------------------------------------------------------
-# Model gateway: the Ollama Manager, Ollama itself, or any server with the OpenAI API (llama.cpp's llama-server,
+# Model gateway: the Strata gateway, Ollama itself, or any server with the OpenAI API (llama.cpp's llama-server,
 # vLLM, LM Studio). Every one of them takes /v1/chat/completions; the model list comes from Ollama's /api/tags or,
-# failing that, from /v1/models. Only the Manager has /api/strata/*, and only Ollama and the Manager have /api/ps.
+# failing that, from /v1/models. Only the gateway has /api/strata/*, and only Ollama and the gateway have /api/ps.
 # ---------------------------------------------------------------------------
 
 class GatewayStatus(OSError):
@@ -2020,7 +2020,7 @@ def helper_ask(ws, job, wait):
 
 def live_ports_here(ws):
     """Ports the folder's servers listen on. In a sandbox that is everything in its container; on the host only
-    sockets of programs started in this folder, so Studio, the Manager and other services stay out of reach."""
+    sockets of programs started in this folder, so Studio, the gateway and other services stay out of reach."""
     if sandboxed(ws):
         result = subprocess.run(sandbox_exec(ws, ["cat", "/proc/net/tcp", "/proc/net/tcp6"]), capture_output=True, text=True, timeout=20)
         return sorted(set(parse_listening(result.stdout).values()))
@@ -2673,7 +2673,7 @@ def watch_model_load_here(run, done):
             strata = strata_status(timeout=5)
         except (OSError, ValueError, http.client.HTTPException):
             failures += 1
-            if failures >= 3:         # no Manager status to follow
+            if failures >= 3:         # no gateway status to follow
                 return
             continue
         progress = load_progress(run.model, strata)
@@ -2694,7 +2694,7 @@ def watch_model_load_here(run, done):
 
 
 def gateway_state():
-    """(the Manager's Strata status or {}, the loaded models from /api/ps, or None for a server with only the OpenAI
+    """(the gateway's Strata status or {}, the loaded models from /api/ps, or None for a server with only the OpenAI
     API). Raises when the gateway does not answer at all."""
     try:
         strata = strata_status(timeout=5)
@@ -2709,12 +2709,12 @@ def gateway_state():
         return strata, None
 
 
-# ---- Strata without the Manager (2026-11-24): when the gateway is Strata's own server (serve/server.py, found by its
-# /v1/status answering "service": "strata"), Studio reads that status and shapes it like the Manager's
+# ---- Strata without the gateway (2026-11-24): when the gateway is Strata's own server (serve/server.py, found by its
+# /v1/status answering "service": "strata"), Studio reads that status and shapes it like the gateway's
 # /api/strata/status, so the dashboard, the loading bar, the session cache and the waiting room work the same. Strata
 # loads the model by itself on a request (auto_load); Studio unloads it after strata_idle_minutes without requests
 # (/v1/unload, strata_idle_loop). One server serves one profile; starting servers and switching profiles is the
-# Manager's job, or the person's.
+# gateway's job, or the person's.
 STRATA_DIRECT = {"loaded": None, "epoch": None, "loading_since": None, "cpu": None, "log_offset": None}
 
 
@@ -2728,7 +2728,7 @@ def strata_direct_status(timeout=5):
 
 
 def is_strata_model(model):
-    """A Strata model, named by the Manager (…:strata) or served by Strata's own server."""
+    """A Strata model, named by the gateway (…:strata) or served by Strata's own server."""
     return ("strata" in (model or "") or (APP is not None and APP.gateway_kind == "strata" and model in APP.strata_models)
             or is_local_model(model))
 
@@ -2740,7 +2740,7 @@ def gateway_base():
 
 
 def strata_manager_shape(st):
-    """Strata's own status in the shape of the Manager's /api/strata/status, plus the original under "direct"."""
+    """Strata's own status in the shape of the gateway's /api/strata/status, plus the original under "direct"."""
     loaded, now = bool(st.get("loaded")), time.time()
     with APP.lock:
         d = STRATA_DIRECT
@@ -2766,7 +2766,7 @@ def strata_manager_shape(st):
 
 
 def strata_status(timeout=5):
-    """The Strata engine's state as the Manager reports it, from the Manager or from Strata's own server. Raises like
+    """The Strata engine's state as the gateway reports it, from the gateway or from Strata's own server. Raises like
     gateway_json; GatewayStatus(404) when the gateway is neither."""
     if not strata_direct_here():
         try:
@@ -2812,7 +2812,7 @@ def cpu_percent():
 
 
 def strata_direct_metrics(st):
-    """The dashboard's metrics from Strata's own status: the card and RAM, in the Manager's field names."""
+    """The dashboard's metrics from Strata's own status: the card and RAM, in the gateway's field names."""
     machine = st.get("machine") or {}
     gpu, ram = machine.get("gpu") or {}, machine.get("ram") or {}
     total, used = (ram.get("total_gib") or 0) * 2 ** 30, (ram.get("used_gib") or 0) * 2 ** 30
@@ -3038,7 +3038,7 @@ def strata_log_tail():
 
 def strata_idle_loop():
     """Strata's own server keeps the model loaded; Studio unloads it after strata_idle_minutes without requests, when no
-    run of Studio works, as the Manager does for its Strata."""
+    run of Studio works, as the gateway does for its Strata."""
     while True:
         time.sleep(float(APP.cfg.get("strata_idle_check_s") or 30))
         minutes = float(APP.cfg.get("strata_idle_minutes") or 0)
@@ -3092,7 +3092,7 @@ def model_state(model, strata, loaded, streaming, run_active):
 
 
 # ---- What holds the graphics card and RAM now (2026-11-14), for the model dashboard's "Loaded now" list: the
-# Manager's loaded models (/api/ps) plus every program of this account using the model's graphics card, read from the
+# gateway's loaded models (/api/ps) plus every program of this account using the model's graphics card, read from the
 # kernel's per-client counters (/proc/<pid>/fdinfo: drm-pdev, drm-client-id, drm-memory-vram in KiB), with its RSS.
 RESIDENT_KINDS = [   # (part of the command line, label, what it is)
     ("Strata/engine/strata-vision", "Strata vision", "reads pictures for the model"),
@@ -3221,9 +3221,9 @@ def memory_residents(loaded, gpu):
 # machine and saves the one an admin picks into studio.config.json, without a restart.
 # ---------------------------------------------------------------------------
 
-MODEL_SERVER_GUESSES = (("Ollama", 11434), ("Ollama Manager", 8787), ("llama.cpp or Strata", 8080), ("Strata", 18080), ("vLLM", 8000),
+MODEL_SERVER_GUESSES = (("Ollama", 11434), ("Strata gateway", 8787), ("llama.cpp or Strata", 8080), ("Strata", 18080), ("vLLM", 8000),
                         ("LM Studio", 1234))
-MODEL_SERVER_KINDS = {"manager": "Ollama Manager", "ollama": "Ollama", "strata": "Strata",
+MODEL_SERVER_KINDS = {"manager": "Strata gateway", "ollama": "Ollama", "strata": "Strata",
                       "openai": "OpenAI API (llama.cpp, vLLM, LM Studio…)"}
 
 
@@ -3396,7 +3396,7 @@ def api_model_server_save(req):
 
 @route("GET", "/api/model/status")
 def api_model_status(req):
-    """The model's state, and with full=1 the Manager's live metrics for the dashboard's gauges."""
+    """The model's state, and with full=1 the gateway's live metrics for the dashboard's gauges."""
     model = req.query.get("model") or APP.cfg["default_model"]
     with gateway_for(model):
         return model_status_here(req, model)
@@ -4972,7 +4972,7 @@ def files_search(req):
 # ---------------------------------------------------------------------------
 
 def sandbox_flags(memory="6g"):
-    """Container restrictions, the same as the Ollama Manager arena's."""
+    """Container restrictions, the same as the author's model arena."""
     return ["--user", f"{os.getuid()}:{os.getgid()}", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
             "--memory", memory, "--memory-swap", memory, "--cpus", str(max(1, min(6, (os.cpu_count() or 2) - 1))),
             "--pids-limit", "1024", "-e", "HOME=/tmp", "-e", "PYTHONDONTWRITEBYTECODE=1"]
@@ -6607,7 +6607,7 @@ CODEX_EFFORTS = ("minimal", "low", "medium", "high", "xhigh", "max", "ultra")   
 
 @route("POST", "/api/agent/session/settings")
 def agent_session_settings(req):
-    """A chat's own settings: reasoning effort (none to xhigh, or "" for the Manager's default)."""
+    """A chat's own settings: reasoning effort (none to xhigh, or "" for the gateway's default)."""
     ws = req.workspace()
     session = load_session(req, req.field("id"))
     if session.get("ws") != ws["id"]:
@@ -9708,7 +9708,7 @@ def parse_tool_calls(raw_calls):
 
 
 def studio_gateway_headers():
-    """Ask the Manager to keep the full thinking budget, and to leave its planning-loop guard off. That guard takes the
+    """Ask the gateway to keep the full thinking budget, and to leave its planning-loop guard off. That guard takes the
     tools away and allows 1536 tokens, so a long tool call arrives cut off as text, and Studio has its own checks."""
     return {**gateway_headers(), **({"X-Studio-Full-Thinking": "1"} if APP.cfg["full_thinking"] else {}),
             **({"X-Studio-No-Planning-Guard": "1"} if APP.cfg["no_planning_guard"] else {})}
@@ -9827,7 +9827,7 @@ def plain_completion(run, payload):
 
 
 def engine_context_tokens():
-    """How much the loaded engine can hold, from the Manager. None for gateways that do not say."""
+    """How much the loaded engine can hold, from the gateway. None for gateways that do not say."""
     try:
         status = strata_status(timeout=2)
     except (OSError, ValueError, http.client.HTTPException):
@@ -9999,7 +9999,7 @@ def cache_index_path():
 
 
 def engine_identity():
-    """{"loaded", "key" (changes with every engine start), "base"} of the Strata engine, or None without a Manager."""
+    """{"loaded", "key" (changes with every engine start), "base"} of the Strata engine, or None without a gateway."""
     try:
         st = strata_status(timeout=5)
     except (OSError, ValueError, http.client.HTTPException):
@@ -10207,7 +10207,7 @@ def call_model(run, messages):
 
 def call_model_here(run, messages):
     payload = {"model": run.model, "messages": wire_messages(run.session["id"], messages), "max_tokens": 8192}
-    if run.session.get("effort") in EFFORTS:      # the chat's own choice; otherwise the Manager's profile decides
+    if run.session.get("effort") in EFFORTS:      # the chat's own choice; otherwise the gateway's profile decides
         payload["reasoning_effort"] = run.session["effort"]
     if run.tools_enabled:
         payload["tools"] = tool_list(run)
@@ -10714,7 +10714,7 @@ def strata_vocab_files():
         try:
             dirs += [(m.get("config") or {}).get("tokenizer") for m in (strata_status() or {}).get("models") or [] if isinstance(m, dict)]
         except Exception:
-            return SCRIPT_BAN["files"]              # the Manager does not answer now: keep what was found before
+            return SCRIPT_BAN["files"]              # the gateway does not answer now: keep what was found before
     files = sorted({os.path.join(d, "vocab.json") for d in dirs if isinstance(d, str) and d and os.path.isfile(os.path.join(d, "vocab.json"))})
     SCRIPT_BAN.update(found=now, files=files)
     return files
@@ -15111,7 +15111,7 @@ def list_backups(data_dir):
 # ---------------------------------------------------------------------------
 
 # ---- the graphics card: how Strata and the tools (pictures, voices) share it (2026-11-11)
-# "tools": the Manager's Subagent pool keeps 9 GB free beside Strata, so pictures and voices start at once while Strata
+# "tools": the gateway's Subagent pool keeps 9 GB free beside Strata, so pictures and voices start at once while Strata
 # runs with less of the card. "strata": no pool, Strata gets the whole card, and a picture or reading first unloads an
 # idle Strata (tools/comfyui_mcp.py no_room_beside, tools/voice_engine.py make_room), which loads again on its next
 # request. The engine's share is fixed when it starts (VRAM can be given back at runtime only on NVIDIA), so a choice
@@ -15194,7 +15194,7 @@ def cleanup_main():
     free and the voice engine sat beside Strata): 1) the voice, sound and music engines unload and ComfyUI is asked to
     free its models; 2) a minute later, if ComfyUI still holds more than COMFY_HELD_LIMIT with an empty queue, its
     service (config comfyui_service) is restarted. Nothing happens while any run works. Strata itself is left to the
-    Manager's own idle unload (its idle_timeout_minutes, shown under Graphics card)."""
+    gateway's own idle unload (its idle_timeout_minutes, shown under Graphics card)."""
     try:
         time.sleep(CLEANUP_WAIT_S)
         if not studio_idle():
@@ -15263,7 +15263,7 @@ def card_path():
 
 
 def card_pool():
-    """The Manager's pool setting and the share the running engine started with, or None without a Manager. When Studio
+    """The gateway's pool setting and the share the running engine started with, or None without a gateway. When Studio
     starts Strata itself, the reserve it starts Strata with (Tools ready) instead."""
     if strata_dir():
         st = strata_direct_status(timeout=5) or {}
@@ -15282,11 +15282,11 @@ def card_pool():
             "active_mib": int((pool.get("active") or {}).get("pool_mib") or 0) if running else None}
 
 
-STRATA_IDLE_CHOICES = (0, 5, 15, 30, 60, 120)     # the Manager's own choices for idle_timeout_minutes
+STRATA_IDLE_CHOICES = (0, 5, 15, 30, 60, 120)     # the gateway's own choices for idle_timeout_minutes
 
 
 def strata_idle_minutes():
-    """The Manager's idle unload for Strata (minutes, 0 = never), or None without a Manager; Studio's own
+    """The gateway's idle unload for Strata (minutes, 0 = never), or None without a gateway; Studio's own
     (strata_idle_minutes) when it talks to Strata's own server."""
     if APP.gateway_kind == "strata":
         return float(APP.cfg.get("strata_idle_minutes") or 0)
@@ -15299,7 +15299,7 @@ def strata_idle_minutes():
 
 @route("POST", "/api/card/strata_idle")
 def card_strata_idle(req):
-    """Sets how long the Manager keeps an idle Strata loaded. The Manager's route replaces all three runtime settings, so
+    """Sets how long the gateway keeps an idle Strata loaded. The gateway's route replaces all three runtime settings, so
     auto_start and the startup script are sent back as they are."""
     need_card_right(req)
     minutes = req.field("minutes")
@@ -15317,7 +15317,7 @@ def card_strata_idle(req):
         gateway_json("POST", "/api/strata/runtime_settings", {"auto_start": lifecycle.get("auto_start", True), "idle_timeout_minutes": minutes,
                                                              "startup_script": lifecycle.get("startup_script") or ""}, timeout=20)
     except (OSError, ValueError, http.client.HTTPException) as exc:
-        raise ApiError(502, f"the Ollama Manager did not take it: {exc}")
+        raise ApiError(502, f"the Strata gateway did not take it: {exc}")
     return card_state()
 
 
@@ -15439,7 +15439,7 @@ def card_state():
     saved = read_json(card_path(), {})
     pool = card_pool()
     mode = saved.get("mode")
-    if mode not in CARD_MODES:                  # never chosen in Studio: read it from the Manager
+    if mode not in CARD_MODES:                  # never chosen in Studio: read it from the gateway
         mode = "tools" if pool and pool["pool_mib"] >= 8192 else "strata"
     runs = [r for r in APP.runs.values() if not r.finished]
     return {"mode": mode, "pending": bool(saved.get("pending")), "pool": pool, "runs": len(runs), "applied_at": saved.get("applied_at"),
@@ -15448,7 +15448,7 @@ def card_state():
 
 
 def card_apply(restart):
-    """Sends the chosen pool to the Manager. The Manager restarts a running Strata to apply it, so without `restart`
+    """Sends the chosen pool to the gateway. The gateway restarts a running Strata to apply it, so without `restart`
     this happens only while Strata is not running."""
     saved = read_json(card_path(), {})
     if saved.get("mode") not in CARD_MODES:
@@ -15471,7 +15471,7 @@ def card_apply(restart):
 
 
 def card_loop():
-    """A pending choice reaches the Manager once Strata is not running (it unloads after 15 idle minutes)."""
+    """A pending choice reaches the gateway once Strata is not running (it unloads after 15 idle minutes)."""
     while True:
         time.sleep(60)
         try:
@@ -15515,9 +15515,9 @@ def card_restart(req):
         raise ApiError(409, "Strata is answering a request now; try again in a moment")
     try:
         if not card_apply(restart=True):
-            raise ApiError(502, "the Ollama Manager did not answer")
+            raise ApiError(502, "the Strata gateway did not answer")
     except (OSError, ValueError, http.client.HTTPException) as exc:
-        raise ApiError(502, f"the Ollama Manager refused the change: {exc}") from None
+        raise ApiError(502, f"the Strata gateway refused the change: {exc}") from None
     return card_state()
 
 

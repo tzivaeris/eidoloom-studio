@@ -47,7 +47,7 @@ def ram_free_gb():
     return float("inf")
 
 CARD_WAIT_S = int(os.environ.get("VOICE_CARD_WAIT_S", "900"))
-# When Strata holds the card (Studio's "Strata first" setting), unload it through the Ollama Manager while it is idle,
+# When Strata holds the card (Studio's "Strata first" setting), unload it through the Strata gateway while it is idle,
 # read, and give the card back at once, so Strata loads again at full size on its next request. VOICE_MAKE_ROOM=0 waits instead.
 MANAGER_URL = os.environ.get("MANAGER_URL", "http://127.0.0.1:8787").rstrip("/")
 MAKE_ROOM = os.environ.get("VOICE_MAKE_ROOM", "1") == "1"
@@ -99,7 +99,7 @@ def manager(path, body=None, timeout=20):
 
 
 def strata_state():
-    """(loaded, requests in progress) of the Strata engine, from the Manager."""
+    """(loaded, requests in progress) of the Strata engine, from the gateway."""
     status = manager("/api/strata/status")
     return bool(status.get("running") or status.get("server_processes")), int((status.get("lifecycle") or {}).get("active_requests") or 0)
 
@@ -119,8 +119,8 @@ def make_room(job):
             time.sleep(1)
         state["made_room"] = True
         return True
-    except Exception as exc:          # no Manager here: wait as before
-        print(f"could not ask the Manager to unload Strata: {exc}", flush=True)
+    except Exception as exc:          # no gateway here: wait as before
+        print(f"could not ask the gateway to unload Strata: {exc}", flush=True)
         return False
 
 

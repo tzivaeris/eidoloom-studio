@@ -176,7 +176,7 @@ def kinds(events):
 def test_voices(tmp, gw_port):
     """The Voices view's routes and the voice MCP server, against tools/voice_engine.py in its fake mode (a tone, no model)."""
     print("voices")
-    # Making room (Studio's "Strata first"): an idle Strata is unloaded through the Manager, a busy one is left alone.
+    # Making room (Studio's "Strata first"): an idle Strata is unloaded through the gateway, a busy one is left alone.
     import http.server as hs
     manager_seen = {"running": True, "busy": 0, "stops": 0}
 
@@ -211,7 +211,7 @@ def test_voices(tmp, gw_port):
           and job["state"] == "making_room" and ve.state["made_room"] is True)
     check("with Strata gone there is nothing more to unload", ve.make_room({"state": "queued"}) is False and manager_seen["stops"] == 1)
     ve.MANAGER_URL = "http://127.0.0.1:9"
-    check("without a Manager it just waits, as before", ve.make_room({"state": "queued"}) is False)
+    check("without a gateway it just waits, as before", ve.make_room({"state": "queued"}) is False)
     fake_manager.shutdown()
     folder = os.path.join(tmp, "voices")
     projects = os.path.join(folder, "projects")
@@ -2855,7 +2855,7 @@ def test_session_cache(c, projects, gw_port, cfg_path):
         check("the list of working runs is empty once the run has ended", active["runs"] == [], active)
         index = json.load(open(os.path.join(os.path.dirname(cfg_path), "data", "session_cache.json")))
         check("and indexed with its size", index.get(a, {}).get("tokens") == 120000, index)
-        engine(pid=11)                                  # the engine was restarted (by the Manager, a tool, anyone)
+        engine(pid=11)                                  # the engine was restarted (by the gateway, a tool, anyone)
         events = run_agent(c, ws, a, "Run this: echo again", auto_commands=True)[1]
         statuses = [e.get("text") or "" for e in events if e["type"] == "status"]
         check("after a reload the chat is restored before its request, not read again", engine()["restores"] == [f"studio-{a}.bin"]
@@ -2935,11 +2935,11 @@ def test_sounds(tmp):
 
 
 def test_card(c, gw_port):
-    print("graphics card setting (Strata first or tools ready), against the mock Manager's pool")
+    print("graphics card setting (Strata first or tools ready), against the mock gateway's pool")
     try:
         c_post_json(gw_port, "/_mock/card", {"on": True, "running": True, "busy": 0, "mode": "fixed", "pool_mib": 9216, "posts": []})
         s, d, _ = c.get("/api/card")
-        check("never chosen in Studio, the setting is read from the Manager's pool", s == 200 and d["mode"] == "tools" and d["pending"] is False
+        check("never chosen in Studio, the setting is read from the gateway's pool", s == 200 and d["mode"] == "tools" and d["pending"] is False
               and d["pool"]["active_mib"] == 9216, d)
         s, d, _ = c.post("/api/card", {"mode": "strata"})
         posts = c_post_json(gw_port, "/_mock/card", {})["posts"]
@@ -2957,12 +2957,12 @@ def test_card(c, gw_port):
         check("with Strata not running, a choice applies at once, for its next start", s == 200 and d["pending"] is False and len(posts) == 2
               and posts[1] == {"mode": "fixed", "pool_mib": 9216, "keep_ollama": False, "while_running": False}, (d, posts))
         check("an unknown choice is refused", c.post("/api/card", {"mode": "both"})[0] == 400)
-        check("the card setting shows how long the Manager keeps an idle Strata", c.get("/api/card")[1]["strata_idle"] == 15)
+        check("the card setting shows how long the gateway keeps an idle Strata", c.get("/api/card")[1]["strata_idle"] == 15)
         s, d, _ = c.post("/api/card/strata_idle", {"minutes": 30})
         runtime = c_post_json(gw_port, "/_mock/card", {})["runtime"]
-        check("changing it keeps the Manager's other runtime settings as they were", s == 200 and d["strata_idle"] == 30
+        check("changing it keeps the gateway's other runtime settings as they were", s == 200 and d["strata_idle"] == 30
               and runtime == {"auto_start": False, "idle_timeout_minutes": 30, "startup_script": "run-test.sh"}, (d, runtime))
-        check("only the Manager's own choices are taken", c.post("/api/card/strata_idle", {"minutes": 7})[0] == 400)
+        check("only the gateway's own choices are taken", c.post("/api/card/strata_idle", {"minutes": 7})[0] == 400)
     finally:
         c_post_json(gw_port, "/_mock/card", {"on": False, "posts": []})
 
@@ -4473,7 +4473,7 @@ def test_comfyui_mcp():
                                               "CLIPLoader": ("clip_name", "qwen_3_4b_fp8_mixed.safetensors", "qwen_2.5_vl_7b_fp8_scaled.safetensors", "umt5_xxl_fp8_e4m3fn_scaled.safetensors"),
                                               "VAELoader": ("vae_name", "ae.safetensors", "qwen_image_vae.safetensors", "wan2.2_vae.safetensors")}[node]
                 self.reply({node: {"input": {"required": {field: [[zfile] * seen["zimage"] + [qfile] * seen["qwen"] + [wfile] * seen["wan"]]}}}})
-            elif path.path == "/api/strata/status":         # the Ollama Manager, for swap mode
+            elif path.path == "/api/strata/status":         # the Strata gateway, for swap mode
                 self.reply({"running": seen["strata"], "server_processes": [{"pid": 1}] if seen["strata"] else [], "lifecycle": {"active_requests": seen["busy"]},
                             "subagent_pool": {"active": {"pool_mib": seen.get("pool", 9216)}}})
             elif path.path == "/api/ps":
@@ -4618,7 +4618,7 @@ def test_comfyui_mcp():
     os.makedirs(os.path.join(music_out, "audio"))
     with open(os.path.join(music_out, "audio", "studio_00001_.mp3"), "wb") as fh:
         fh.write(b"ID3fake-mp3")
-    # Swap mode: qwen-image gets the whole card, with Strata unloaded through the Manager first.
+    # Swap mode: qwen-image gets the whole card, with Strata unloaded through the gateway first.
     swap_file = os.path.join(os.path.dirname(settings), "swap.json")
     seen.update({"qwen": True, "swap_file": swap_file})
 
@@ -5640,8 +5640,8 @@ def test_model_servers(tmp):
 
 
 def test_strata_direct(tmp):
-    """Strata's own server as the gateway, with no Manager: names, state, gauges, loading, session cache, idle unload."""
-    print("Strata's own server, without the Manager")
+    """Strata's own server as the model server, with no Strata gateway: names, state, gauges, loading, session cache, idle unload."""
+    print("Strata's own server, without the gateway")
     folder = os.path.join(tmp, "strata-direct")
     projects = os.path.join(folder, "projects")
     os.makedirs(os.path.join(projects, "app"))
@@ -6788,7 +6788,7 @@ def test_all(c, tmp, sample, outside, gw_port, cfg_path, st_port):
     check("state: reading prompt", state({**up, "lifecycle": {"active_requests": 1}, "job": {"kind": "start", "state": "running", "message": "[strata] reading the prompt: 1 of 2"}}) == ("work", "Reading prompt"))
     check("state: ollama model", state({}, model="llama3:8b") == ("off", "Not loaded") and state({}, [{"name": "llama3:8b"}], model="llama3:8b") == ("idle", "Loaded"))
     s, d, _ = c.get("/api/model/status?model=quartz:strata")
-    check("a plain Ollama without the Manager's endpoints is not called offline", s == 200 and d["state"] == "off" and d["label"] == "Not loaded"
+    check("a plain Ollama without the gateway's endpoints is not called offline", s == 200 and d["state"] == "off" and d["label"] == "Not loaded"
           and d["metrics"] is None, d)
     s, _, _ = c.get("/api/model/status", cookie=False)
     check("status route needs login", s == 401)
@@ -6891,7 +6891,7 @@ def test_all(c, tmp, sample, outside, gw_port, cfg_path, st_port):
     _, ev_bare = run_agent(c, ws, leak_sess, "A bare call test", auto_apply=True, auto_commands=True)
     check("a bare JSON tool call runs, and the run goes on", [e["name"] for e in ev_bare if e["type"] == "tool_call"][0] == "list_files" and ev_bare[-1]["reason"] == "finished", ev_bare[-1])
     check("the weekend runners leave both off", all('"retry_cut_off": False, "text_tool_calls": False' in open(os.path.join(ROOT, "sandbox", name), encoding="utf-8").read() for name in ("overnight.py", "arena.py", "feature_night.py")))
-    check("and keep the Manager's planning-loop guard and MCP as before", all('"no_planning_guard": False' in open(os.path.join(ROOT, "sandbox", name), encoding="utf-8").read() and '"mcp": False' in open(os.path.join(ROOT, "sandbox", name), encoding="utf-8").read() for name in ("overnight.py", "arena.py", "feature_night.py")))
+    check("and keep the gateway's planning-loop guard and MCP as before", all('"no_planning_guard": False' in open(os.path.join(ROOT, "sandbox", name), encoding="utf-8").read() and '"mcp": False' in open(os.path.join(ROOT, "sandbox", name), encoding="utf-8").read() for name in ("overnight.py", "arena.py", "feature_night.py")))
     check("and leave the plan tool off, so their prompt stays as before", all('"plan_tool": False' in open(os.path.join(ROOT, "sandbox", name), encoding="utf-8").read() for name in ("overnight.py", "arena.py", "feature_night.py")))
     check("and leave view_page off, so their tool list stays as before", all('"live_view": False' in open(os.path.join(ROOT, "sandbox", name), encoding="utf-8").read() for name in ("overnight.py", "arena.py", "feature_night.py")))
     check("a tool call sent as text does not end the run", [e["name"] for e in ev_leak if e["type"] == "tool_call"][0] == "list_files" and ev_leak[-1]["reason"] == "finished", ev_leak[-1])
@@ -6934,7 +6934,7 @@ def test_all(c, tmp, sample, outside, gw_port, cfg_path, st_port):
         fh.write(original)
     named = c_get_json(gw_port, "/_mock/requests")["requests"][-1]["system"]
     check("Studio asks for full thinking", c_get_json(gw_port, "/_mock/requests")["requests"][-1]["full_thinking"] == "1")
-    check("Studio asks the Manager to leave its planning-loop guard off", c_get_json(gw_port, "/_mock/requests")["requests"][-1]["no_planning_guard"] == "1")
+    check("Studio asks the gateway to leave its planning-loop guard off", c_get_json(gw_port, "/_mock/requests")["requests"][-1]["no_planning_guard"] == "1")
     check("the prompt names the user's language", "The user writes in English. Write everything you say to the user in English, unless they ask for another language." in named, named[-200:])
     check("the run goes on after an unknown tool", ev_unknown[-1]["reason"] == "finished" and any(e["type"] == "tool_result" and e["name"] == "replace_in_file" and e["ok"] for e in ev_unknown), ev_unknown[-1])
     with open(readme, "w") as fh:

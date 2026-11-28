@@ -102,8 +102,8 @@ def make_room(job):
             time.sleep(1)
         state["made_room"] = True
         return True
-    except Exception as exc:                  # noqa: BLE001 - no Manager: wait as before
-        print(f"could not ask the Manager to unload Strata: {exc}", flush=True)
+    except Exception as exc:                  # noqa: BLE001 - no gateway: wait as before
+        print(f"could not ask the gateway to unload Strata: {exc}", flush=True)
         return False
 
 

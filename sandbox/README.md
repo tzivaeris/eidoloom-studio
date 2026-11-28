@@ -1,6 +1,6 @@
 # Studio agent sandbox
 
-Tests the Studio agent on a full project, in the style of the Ollama Manager arena: a throw-away container, limited resources and hidden tests.
+Tests the Studio agent on a full project, in the style of the author's own model arena: a throw-away container, limited resources and hidden tests.
 
 ## Run a test
 1. Start it with `python3 sandbox/arena.py serve` and open http://127.0.0.1:8791. It has its own password, separate from the main instance on :8790.

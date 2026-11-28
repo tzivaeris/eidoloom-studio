@@ -7,7 +7,7 @@
 # the eidoloom-studio user service (install-service.sh). Then open the address it prints, create the admin password,
 # and install the tools from Account & settings → Tools & setup: one button for everything this machine can run.
 #
-# Not part of Studio, so not installed here: the model server (Ollama, llama.cpp, vLLM, LM Studio or the Ollama Manager),
+# Not part of Studio, so not installed here: the model server (Ollama, llama.cpp, vLLM, LM Studio or the Strata gateway),
 # which Studio reaches at "gateway" in studio.config.json (Ollama's http://127.0.0.1:11434 in the example).
 set -euo pipefail
 

@@ -17,7 +17,7 @@ Layout: VS Code-like — file tree left, tabbed Monaco editor centre, agent chat
 - Default bind `127.0.0.1:8790` (this machine only) **with mandatory login**; `"host": "0.0.0.0"` opens it to the
   network. Config file decides.
 - Model gateway = the `gateway` setting (Ollama at `http://127.0.0.1:11434` in the example config). Endpoints used
-  (an OpenAI-only server answers `/v1/models` instead of `/api/tags`; the Ollama Manager and Strata's own server add
+  (an OpenAI-only server answers `/v1/models` instead of `/api/tags`; the Strata gateway and Strata's own server add
   the Strata routes):
   - `GET /api/tags` → `{"models":[{"name","size","details":{...}}]}` (Ollama models + Strata names containing `strata`).
   - `POST /api/show {"model": name}` → `capabilities` array may contain `"tools"`. Strata names always support tools.
@@ -26,7 +26,7 @@ Layout: VS Code-like — file tree left, tabbed Monaco editor centre, agent chat
     Deltas may contain `content`, `reasoning_content` (or `reasoning`), and `tool_calls` fragments
     (`index`, `id`, `function.name`, `function.arguments` pieces to concatenate). Always send header
     `X-Application-Name: Strata Studio` (the project's name before 2026-11-20, kept because the Ollama
-    Manager's exemptions match it). If streaming fails or yields nothing usable, retry once with
+    gateway's exemptions match it). If streaming fails or yields nothing usable, retry once with
     `stream: false` and read `choices[0].message`. `max_tokens` default 8192, never above 16384.
     The first request to a Strata model may take 30-60 s (model loading): use a long timeout (1200 s) and emit a
     `status` event "Waiting for the model (it may be loading)…".
@@ -93,7 +93,7 @@ Workspaces:
 - `POST /api/workspace/open {"path"}` → `{"workspace":{"id","path","name"}}` (id = first 12 hex of sha1(realpath));
   registry persisted in `data/workspaces.json`. All later calls pass `ws=<id>`.
 - `POST /api/workspace/sandbox {"ws","enabled"?,"image"?,"network"?,"ports"?}` → `{"workspace"}`. Per-folder preference, persisted, defaults in config `sandbox_default`, `sandbox_image`, `sandbox_network`, `sandbox_memory`. On: agent commands and terminals run in that folder's container, with only the folder at `/work` and a private home. `network`: `off`, `install` (the agent's dependency commands get internet for that command) or `on`. `ports` are published on 127.0.0.1 and need `on`. `image: ""` restores the default. Off: commands run on the host and the container is removed. 409 during a run or with `sandbox_required`; 503 if Docker fails. File tools always act on the real folder.
-- `GET /api/model/status?model=&full=1` → `{"model","state":"off"|"load"|"idle"|"work"|"err","label","detail","active_requests","last_generation","loaded","stream_chars","time","metrics"}`. `metrics` is the Manager's `/api/metrics` subset with `full=1`, else null.
+- `GET /api/model/status?model=&full=1` → `{"model","state":"off"|"load"|"idle"|"work"|"err","label","detail","active_requests","last_generation","loaded","stream_chars","time","metrics"}`. `metrics` is the gateway's `/api/metrics` subset with `full=1`, else null.
 - `GET /api/workspace/recent` → last 10 opened `{"workspaces":[...]}`.
 
 Files (all take `ws`):
@@ -190,8 +190,8 @@ Agent (one active run per workspace):
   the differing files into the folder with an undo point (409 with `conflicts` when the folder changed since the copy, unless
   `force`), and both remove the copy and append `timeskip_decided` to the chat. A chat with a run going refuses other runs (409).
 - `POST /api/agent/session/settings {ws, id, effort: none|low|medium|high|xhigh|""}` → `{effort}`: the chat's reasoning
-  effort, sent as `reasoning_effort` with its requests (the Manager honours it unless its profile is set to no thinking);
-  empty means the Manager's default. `GET /api/agent/session` returns `effort`.
+  effort, sent as `reasoning_effort` with its requests (the gateway honours it unless its profile is set to no thinking);
+  empty means the gateway's default. `GET /api/agent/session` returns `effort`.
 - Your own tools (config `user_tools`): `GET /api/tools/mine`, `POST /api/tools/save {tool{name, kind: instructions|command,
   description, text, on}, old_name?}`, `POST /api/tools/delete {name}`, in `data/user_tools/<sha1(user)>.json`. They reach the
   agent as `user__<name>`, fixed per run: instructions return the text; a command runs in the project (sandboxed when on)
@@ -264,7 +264,7 @@ Plan: the agent's `plan{steps}` (config `plan_tool`): 1 to 20 short step names (
 
 Skills: the agent's `save_skill{name,kind,description,instructions}` (same permission as an edit, event `skill_saved`) and `use_skill{name}`. A user's skills are in `data/skills/`, in every folder. `GET /api/skills`, `POST /api/skills/delete {name}`, `POST /api/skills/save {name,kind,description,instructions,old_name?}` (the user writes a skill, or edits the one named `old_name`, possibly renaming it; same checks as `save_skill`; 409 if the name is taken by another skill, 404 if `old_name` is gone; renaming keeps `created`, `uses` and `folder`; a skill the user wrote has an empty `folder`). Config `skills`.
 `/api/queue/stream` also sends `sync{type,origin,...}` (type prefs, sessions, run_started, terminals, files, git or workspace). `GET|POST /api/prefs`, `GET /api/term/list?ws=`.
-With `full_thinking` on, chat requests carry `X-Studio-Full-Thinking: 1`, and the Manager then keeps the full thinking budget. With `no_planning_guard` on, they carry `X-Studio-No-Planning-Guard: 1`, and the Manager does not replace a long-planning reply with its tool-less 1536-token final pass.
+With `full_thinking` on, chat requests carry `X-Studio-Full-Thinking: 1`, and the gateway then keeps the full thinking budget. With `no_planning_guard` on, they carry `X-Studio-No-Planning-Guard: 1`, and the gateway does not replace a long-planning reply with its tool-less 1536-token final pass.
 Before reusing a folder's sandbox container, Studio checks once per container that `/work` and `/home/sandbox` inside it are the same folders (inode) as on disk now; a container that still sees a folder moved or replaced at the same path is removed and created again.
 `file_changed` also has `action` (create, edit or delete) and `change{added,removed,rows,truncated,too_large}`, where each row is `[kind, old line, new line, text]`; edit approvals have `change` too. `tool_result` output is up to 12 000 characters from the end for `run`, and the first 4 000 otherwise. `delete_file{path}` is a tool unless `delete_tool` is false.
 An edit `approval` with two or more separate changes has `hunks`; `POST /api/agent/decision` takes `parts`, the indexes to apply.

@@ -78,7 +78,7 @@ Both start private copies of Studio on free ports with the mock, so they never t
 internet for the CDNs. The tests for a person's own computer need the helper built first
 (`tools/helper/build.sh`, which uses the sandbox image), and are skipped without it.
 
-`mock_gateway.py` plays the Manager by default. `MOCK_OPENAI_ONLY=1` makes it a server with only the OpenAI API, like
+`mock_gateway.py` plays the gateway by default. `MOCK_OPENAI_ONLY=1` makes it a server with only the OpenAI API, like
 llama.cpp, vLLM or LM Studio, and `MOCK_API_KEY` then asks for that key. Its other switches are listed at its top.
 
 ## Rules of the house
@@ -94,15 +94,22 @@ llama.cpp, vLLM or LM Studio, and `MOCK_API_KEY` then asks for that key. Its oth
 
 Studio talks to one `gateway`. Every server takes `/v1/chat/completions`; the model list comes from Ollama's `/api/tags`
 or, failing that, `/v1/models`. The Strata features (loading progress, the graphics card choice, the session cache, the
-model dashboard's gauges) work with the Ollama Manager's `/api/strata/*` and `/api/metrics` routes, or with Strata's
+model dashboard's gauges) work with the Strata gateway's `/api/strata/*` and `/api/metrics` routes, or with Strata's
 own server (`/v1/status`), which Studio can also start itself (`strata_dir`). With other servers they stay quiet.
+
+**The Strata gateway.** While Studio was being built, the author also wrote a separate tool, not published,
+that serves Strata behind an Ollama-style API (`/api/tags`, `/api/ps`, `/api/strata/*`, port 8787). It runs the model
+arena and tests Strata's presets against each other, to choose the best for each kind of work. That is why Studio
+recognises such a gateway, can unload Strata through it for the picture, voice and music engines, and sends the
+headers it reads (`X-Studio-Full-Thinking`, `X-Studio-No-Planning-Guard`). Studio does not need it: without one, these
+paths stay quiet, and Studio talks to Strata's or PolyStrata's own server, or starts it itself.
 
 ## Names that stay as they were
 
 The project was called Strata Studio until 2026-11-20. These internal names were kept so that existing installs and the
-Ollama Manager keep working: the `studio_session_*` cookies, the `X-Studio` headers,
+Strata gateway keep working: the `studio_session_*` cookies, the `X-Studio` headers,
 `.strata-studio/` in projects, the `strata-sandbox` images and network, and the gateway header
-`X-Application-Name: Strata Studio`, which the Manager's exemptions match. The service was renamed `eidoloom-studio` in
+`X-Application-Name: Strata Studio`, which the gateway's exemptions match. The service was renamed `eidoloom-studio` in
 0.1.1; `install-service.sh` removes an old `strata-studio` service when it installs the new one.
 
 ## This machine's settings

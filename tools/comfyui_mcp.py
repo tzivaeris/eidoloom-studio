@@ -4,10 +4,10 @@
 Models: z-image-turbo (Tongyi-MAI, Apache 2.0; realistic, follows detailed prompts, 8 steps), z-image-base (the same family
 in full: more variety, negative prompts work, 25 steps), sdxl (painted styles, varied) and qwen-image (Qwen-Image-2512,
 Apache 2.0, 20B: the best quality and text in pictures). The first three fit beside the Strata engine; qwen-image needs the
-whole graphics card, so the server first unloads Strata through the Ollama Manager ("swap mode"). Strata loads again by
+whole graphics card, so the server first unloads Strata through the Strata gateway ("swap mode"). Strata loads again by
 itself on the chat's next request.
 
-It talks only to the ComfyUI at COMFYUI_URL and the Manager at STRATA_MANAGER_URL, so prompts and pictures stay on this
+It talks only to the ComfyUI at COMFYUI_URL and the gateway at STRATA_MANAGER_URL, so prompts and pictures stay on this
 machine. Pictures come back as MCP image content, which Studio shows in the chat and passes to models that can see.
 """
 import base64
@@ -196,7 +196,7 @@ def comfy(path, body=None, timeout=30, raw=False):
 def manager(path, body=None, timeout=30):
     if not MANAGER_URL:                 # STRATA_MANAGER_URL="": no model server on this machine, so nothing to unload
         return {}
-    return http(MANAGER_URL, "The Ollama Manager", path, body, timeout)
+    return http(MANAGER_URL, "The Strata gateway", path, body, timeout)
 
 
 def choices(node, field):
@@ -646,12 +646,12 @@ def swap_begin():
             raise Failure("Strata is answering another client's request, so it cannot be unloaded to make room for the pictures now. Try again in a while.")
         time.sleep(3)
         running, busy = strata_state()
-    # The Manager lists the loaded Strata model here too (runtime "strata"); that one is unloaded below.
+    # The gateway lists the loaded Strata model here too (runtime "strata"); that one is unloaded below.
     holding = [m.get("name") or m.get("model") for m in manager("/api/ps").get("models", [])
                if int(m.get("size_vram") or 0) > 0 and m.get("runtime") != "strata" and (m.get("details") or {}).get("format") != "strata"]
     if holding:
         raise Failure(f"Ollama models hold graphics memory ({', '.join(holding)}), so the pictures cannot have the whole card; "
-                      "unload them in the Ollama Manager.")
+                      "unload them in the Strata gateway.")
     write_swap(True)
     if running:
         manager("/api/strata/stop", {}, timeout=120)

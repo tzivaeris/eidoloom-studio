@@ -25,16 +25,16 @@ Set up on 2026-11-10 so Studio's models can make pictures through MCP, on this m
   (19 GiB), `text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors`, `vae/qwen_image_vae.safetensors`, from Comfy-Org/Qwen-Image.
   20 steps, cfg 4, euler, shift 3.1, 1328 px native. Comfy-Org/Qwen-Image-2.1 (newer, 7B, would fit beside Strata) is marked
   license "other" and was left out.
-- **Swap mode** (`qwen-image`): the tool checks that Strata is not answering another client (the Manager's `active_requests`,
+- **Swap mode** (`qwen-image`): the tool checks that Strata is not answering another client (the gateway's `active_requests`,
   waiting up to 90 s) and that no Ollama model holds the card, writes the swap file
   (`~/.local/opt/comfyui/user/strata_swap.json`, `COMFYUI_SWAP_FILE`) so the add-on lets ComfyUI use the whole card, stops
   Strata (`POST /api/strata/stop`), renders the whole batch, frees ComfyUI and closes the swap file. Strata loads again by
-  itself with the chat's next request (the Manager's auto start), which costs the load and a fresh read of the conversation:
+  itself with the chat's next request (the gateway's auto start), which costs the load and a fresh read of the conversation:
   two or three minutes a batch, so the tool asks models to put every picture into one `generate_images` call (at most 8).
   The server's `timeout_s` in Studio is 1800 and `COMFYUI_SWAP_WAIT_S` 1500; past that, the queue is cleared and the swap
   ends, so Strata never loads onto a full card. The swap file ends by itself 5 minutes after that limit, in case of a crash.
-  Known risk: a request from another client (the Bridge PCs) arriving during a swap makes the Manager start Strata on a full
-  card. The Manager's `/api/ps` lists the loaded Strata model too (`runtime: strata`); the Ollama check skips it.
+  Known risk: a request from another client (the Bridge PCs) arriving during a swap makes the gateway start Strata on a full
+  card. The gateway's `/api/ps` lists the loaded Strata model too (`runtime: strata`); the Ollama check skips it.
   First real swap (2026-11-10 15:35): Strata unloaded, two pictures in 237 s (114 s at 1472x1104, 124 s at 1328x1328,
   including the first load of the 20 GB model from disk), card peak 23.4 GB, the decoder falling back to tiles both times
   (ComfyUI does that by itself), then 572 MB and 0.8 GB of RAM once the swap closed. Strata loaded again on the next
@@ -44,9 +44,9 @@ Set up on 2026-11-10 so Studio's models can make pictures through MCP, on this m
   sha256 checked against Hugging Face). More checkpoints go in the same folder; `list_models` shows them.
   Tested: clean pictures (no black images, which newer ROCm builds give on this card), 1024x1024 in 9-16 s.
 - **Graphics memory:** ComfyUI runs on a 24 GB AMD card (`HIP_VISIBLE_DEVICES=0`; ROCm does not support the RX 550). Strata
-  normally fills that card, so the Manager's Subagent pool is set to a fixed 9 GB (Manager data file, `strata_subagent_pool`),
+  normally fills that card, so the gateway's Subagent pool is set to a fixed 9 GB (gateway data file, `strata_subagent_pool`),
   and Strata gets about 15 GB, as before 2026-11-06. `--reserve-vram 15` keeps ComfyUI within about 9 GB even when Strata is
-  not loaded. Set the pool back to Off in the Manager to give Strata the whole card again. ComfyUI sizes its work from the
+  not loaded. Set the pool back to Off in the gateway to give Strata the whole card again. ComfyUI sizes its work from the
   card's free memory at that moment, so `--reserve-vram` cannot cap it: `--reserve-vram 15` left it nothing while Strata was
   loaded (every model streamed from RAM, 24-66 s a picture), and 1 GB let Z-Image take 21.5 GB while Strata was not. The
   add-on `custom_nodes/strata_vram_cap.py` (not part of ComfyUI) caps what it sees as free at `STRATA_COMFY_VRAM_GB` (8.5) less
@@ -68,7 +68,7 @@ Set up on 2026-11-10 so Studio's models can make pictures through MCP, on this m
   `strata-studio` (`COMFYUI_CLIENT_ID`) so Studio receives the step progress; pictures started in ComfyUI's own page show
   without steps.
 - Remove it all: remove the server in Studio's Tool servers panel, `systemctl --user disable --now comfyui`, delete
-  `~/.config/systemd/user/comfyui.service` and `~/.local/opt/comfyui`, and set the Manager's Subagent pool back to Off.
+  `~/.config/systemd/user/comfyui.service` and `~/.local/opt/comfyui`, and set the gateway's Subagent pool back to Off.
 
 ## First real run (2026-11-10)
 A Strata model in a private Studio (`sandbox/runs/comfyui-20261110/`, `try.py`, `log.txt`): Strata loaded with the 9 GB pool in

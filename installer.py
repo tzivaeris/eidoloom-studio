@@ -189,7 +189,7 @@ def blender_release():
 
 
 def manager_strata_dir():
-    """The Strata checkout the Ollama Manager on this machine runs, or ""."""
+    """The Strata checkout the Strata gateway on this machine runs, or ""."""
     try:
         with urllib.request.urlopen(urllib.request.Request(MANAGER + "/api/strata/status", headers=UA), timeout=3) as resp:
             folder = json.load(resp).get("directory") or ""
@@ -379,7 +379,7 @@ UNIT_SOURCES = {"comfyui": "sandbox/mcp-comfyui/comfyui.service", "strata-voice"
 MAKE_ROOM_ENV = {"strata-voice": "VOICE_MAKE_ROOM", "strata-sound": "SOUND_MAKE_ROOM", "strata-music": "MUSIC_MAKE_ROOM"}
 MANAGER = "http://127.0.0.1:8787"
 
-# Local models (2026-11-27, the user's request: everything from Studio, no Ollama Manager). Pinned to what this machine
+# Local models (2026-11-27, the user's request: everything from Studio, no gateway needed). Pinned to what this machine
 # runs; their own setup.sh builds the engine for the card and downloads the model. ram_gb/vram_gb are their setups'
 # own estimates; a choice whose profile exists is installed (the profile is strata-<family>-<size>.json).
 STRATA = ("https://github.com/Niko1221/Strata.git", "c77572806996349b49995e4f98d41b5294d36a21")
@@ -405,7 +405,7 @@ LOCAL_PORT = 8097
 GROUPS = [("models", "Local models"), ("services", "Services in Docker"), ("tools", "Tools on this machine"), ("engines", "Engines on the graphics card")]
 LATER_NOTE = "Comes in the next version of this installer (AMD graphics cards first)."
 NOT_INSTALLABLE = ["listmonk (email) is its own project: set it up from listmonk.app, then add the two listmonk tool servers in Tool servers with its API user.",
-                   "Ollama and the Ollama Manager are their own projects: Studio uses them when Account & settings → Models points at one."]
+                   "Ollama is its own project: Studio uses it when Account & settings → Models points at one."]
 
 
 def test_catalog(root, data_dir):
@@ -625,7 +625,7 @@ class Installer:
         return True, ("tool server " + ", ".join(found)) if found else "installed"
 
     def local_folder(self, item):
-        """The checkout: the one Studio's config names, one the Ollama Manager runs (Strata), or Studio's own in ~/.local/opt."""
+        """The checkout: the one Studio's config names, one the Strata gateway runs (Strata), or Studio's own in ~/.local/opt."""
         get = self.hooks.get("config_get")
         named = get(LOCAL_KEYS[item["local"]]) if get else ""
         if named and os.path.isdir(os.path.expanduser(named)):
@@ -1134,7 +1134,7 @@ class Installer:
         return os.path.join(self.root, "sandbox", "engines", name)
 
     def manager_here(self):
-        """Whether a model server (the Ollama Manager with Strata) runs on this machine, sharing the card with the engines."""
+        """Whether a model server (the Strata gateway with Strata) runs on this machine, sharing the card with the engines."""
         try:
             with urllib.request.urlopen(urllib.request.Request(MANAGER + "/api/strata/status", headers=UA), timeout=4) as resp:
                 return resp.status == 200
