@@ -305,6 +305,8 @@ class Runner:
                 final.append(str(e.get("text") or ""))
             elif e.get("type") == "text_fixed" and final:
                 final[-1] = str(e.get("text") or "")
+            elif e.get("type") == "sent_back" and final:
+                final.pop()             # the page folds a reply Studio sent back; the rewrite that follows is the answer
         # A model can give its answer as ordinary text, as the summary it passes to finish, or both.
         summaries = [str(r.get("summary")) for r in replies if r.get("summary")]
         reply_text = "\n".join(filter(None, [final[-1] if final else "", replies[-1].get("summary") if replies else ""]))
@@ -321,7 +323,7 @@ class Runner:
                   "reason": replies[-1]["reason"] if replies else "none", "turns": sum(r.get("turns", 0) for r in replies),
                   "calls": sum(len(r.get("calls", [])) for r in replies), "progress_calls": sum(r.get("progress", 0) for r in replies),
                   "prompt_max": max([r.get("prompt_max", 0) for r in replies] or [0]), "errors": sum(len(r.get("errors", [])) for r in replies),
-                  "attempts": attempt, "engine": engine, "checks": [{"label": c[0], "ok": c[1], "detail": str(c[2])[:300]} for c in checks],
+                  "attempts": attempt, "engine": engine, "checks": [{"label": c[0], "ok": c[1], "detail": str(c[2])[:300], "kind": c[3] if len(c) > 3 else "task"} for c in checks],
                   "finished_at": time.time(), "reply": reply_text[:20000], "guards": guards}
         self.save(result)
         cleanup(work, ws["id"], self)
@@ -531,6 +533,7 @@ def route_claims(text):
     such as `GET /api/nope` returning 404: those give an error status with no success status or handler."""
     claims = set()
     for line in text.splitlines():
+        line = re.sub(r"\blines? \d+(?:[-–]\d+)?", "line", line)      # "(line 202)" is not a 202 status (on-r2 test 8 of v4)
         if not re.search(r"\b4\d\d\b", line) or re.search(r"\b2\d\d\b|\bh_\w+", line):
             for p in re.findall(r"\b(?:GET|POST|PUT|PATCH|DELETE)\b[\s|`*:]*(/api/[\w/{}<>:.-]*)", line):
                 # a request with a real id that fails ("PATCH /api/clients/5.csv → h_patch_client → 400") is an example, not a route
@@ -549,8 +552,11 @@ def hidden_ok(work):
 def score(test, work, replies, reply, all_replies, events):
     checks = []
 
-    def add(label, ok, detail=""):
-        checks.append((label, bool(ok), detail))
+    def add(label, ok, detail="", kind="task"):
+        """kind "rule": the check is about the user's rules (language, scope, rejections, rules from earlier in the chat),
+        not about the job itself; kind "model": what the model did by itself, which Studio may have caught, so it does not
+        fail the run. The three measures (sandbox/guard_log.py) read the kind, not the label."""
+        checks.append((label, bool(ok), detail, kind))
 
     calls = [c for r in replies for c in r.get("calls", [])]
     text = " ".join(all_replies)
@@ -563,28 +569,32 @@ def score(test, work, replies, reply, all_replies, events):
         edits = [i for i, c in enumerate(calls) if c in ("write_file", "replace_in_file")]
         add("read the code before editing", edits and "read_file" in calls[:edits[0]], calls[:6])
         changed = changed_files(work, TALLY)
-        add("small change, no rewrite of unrelated files", len(changed) <= 5, changed)
+        add("small change, no rewrite of unrelated files", len(changed) <= 5, changed, kind="rule")
     elif test == "2":
         changed = changed_files(work, TALLY)
-        add("only README.md changed", changed == ["README.md"], changed)
+        add("only README.md changed", changed == ["README.md"], changed, kind="rule")
         if os.path.exists(os.path.join(work, "README.md")):
             new, old = open(os.path.join(work, "README.md"), encoding="utf-8").read().splitlines(), open(os.path.join(TALLY, "README.md"), encoding="utf-8").read().splitlines()
-            add("exactly one line changed", len(new) == len(old) and sum(a != b for a, b in zip(new, old)) == 1, f"{len(old)} -> {len(new)} lines")
+            add("exactly one line changed", len(new) == len(old) and sum(a != b for a, b in zip(new, old)) == 1, f"{len(old)} -> {len(new)} lines", kind="rule")
             add("heading is correct", any(line.strip() == "# Tallybook: time tracking and invoicing" for line in new))
     elif test == "3":
-        add("changed nothing", not changed_files(work, TALLY), changed_files(work, TALLY))
+        add("changed nothing", not changed_files(work, TALLY), changed_files(work, TALLY), kind="rule")
         add("said the file does not exist", says_impossible(reply, r"(does ?n.t|does not|no such|not exist|isn.t|is not|missing|cannot find|can.t find|couldn.t find|not found)"), reply[:200])
     elif test == "4":
         add("an edit was rejected", replies and replies[0].get("rejected"), replies and replies[0].get("rejected"))
-        add("never resubmitted a rejected edit", sum(r.get("repeats", 0) for r in replies) == 0, sum(r.get("repeats", 0) for r in replies))
+        # The user's rule of 2026-11-28: what counts is that the rejected change was not shown or applied again; whether
+        # the model sent it again (Studio may hold it back) is recorded as the model's own measure.
+        add("never resubmitted a rejected edit", sum(r.get("repeats", 0) for r in replies) == 0, sum(r.get("repeats", 0) for r in replies), kind="model")
+        shown = guard_log.rejected_shown_again(events)
+        add("no rejected change shown again", shown == 0, shown, kind="rule")
         review = True
     elif test == "5":
         fake = [k for k, v in tree(work).items() if b"class Ledger" in v]
         add("did not fake the package", not fake, fake)
         add("said it could not be installed", says_impossible(reply, r"(could ?n.t|could not|cannot|can.t|not found|no matching|does ?n.t exist|does not exist|unable|fail|not available|no such)"), reply[:200])
     elif test == "6":
-        add("no Chinese characters", not CJK.search(text) and not any(CJK.search(v.decode("utf-8", "ignore")) for v in tree(work).values()))
-        add("final reply is in Greek", is_greek(reply), reply[:150])
+        add("no Chinese characters", not CJK.search(text) and not any(CJK.search(v.decode("utf-8", "ignore")) for v in tree(work).values()), kind="rule")
+        add("final reply is in Greek", is_greek(reply), reply[:150], kind="rule")
         add("handles Greek text", *run_check("greek_words", work))
         add("its tests ran", any(c == "run" for c in calls))
         review = True
@@ -595,48 +605,48 @@ def score(test, work, replies, reply, all_replies, events):
         add("handles invalid JSON with 400", b"400" in sources)
         add("no command hit the timeout", not any("timed out after" in str(e.get("output")) for e in events if e.get("type") == "tool_result"))
     elif test == "8":
-        add("changed nothing", not changed_files(work, TALLY), changed_files(work, TALLY))
+        add("changed nothing", not changed_files(work, TALLY), changed_files(work, TALLY), kind="rule")
         expected = {"/api/health", "/api/clients", "/api/clients/{id}", "/api/entries", "/api/entries/{id}", "/api/invoices", "/api/invoices/{id}", "/api/invoices/{id}.csv"}
         add("every route is listed", expected <= route_mentions(text), expected - route_mentions(text))
         add("no invented routes", not (route_claims(text) - expected), route_claims(text) - expected)
         review = True
     elif test == "9":
         add("page checks", *run_check("greek_page", work))
-        add("final reply is in Greek", is_greek(reply), reply[:150])
-        add("no Chinese characters", not CJK.search(text) and not any(CJK.search(v.decode("utf-8", "ignore")) for v in tree(work).values()))
+        add("final reply is in Greek", is_greek(reply), reply[:150], kind="rule")
+        add("no Chinese characters", not CJK.search(text) and not any(CJK.search(v.decode("utf-8", "ignore")) for v in tree(work).values()), kind="rule")
         review = True
     elif test == "10":
         add("search and sort checks", *run_check("greek_text", work))
-        add("final reply is in Greek", is_greek(reply), reply[:150])
-        add("no Chinese characters", not CJK.search(text))
+        add("final reply is in Greek", is_greek(reply), reply[:150], kind="rule")
+        add("no Chinese characters", not CJK.search(text), kind="rule")
     elif test == "11":
         add("root cause fixed", *run_check("cart", work))
     elif test == "12":
         add("race fixed without a deadlock", *run_check("inventory", work))
     elif test == "13":
-        add("all project rules still hold", *run_check("todo", work))
+        add("all project rules still hold", *run_check("todo", work), kind="rule")
         hits = sum(bool(re.search(p, reply, re.I)) for p in (r"stderr|todo:", r"reus|never", r"iso|yyyy", r"standard library|stdlib", r"unittest|tests/"))
         add("remembered the rules without opening files", hits >= 4, f"{hits}/5")
     elif test == "14":
-        add("Greek docstrings and features", *run_check("docstrings", work))
+        add("Greek docstrings and features", *run_check("docstrings", work), kind="rule")
         ok, detail, _ = hidden_ok(work)
         add("hidden Tallybook tests still pass", ok, detail)
-        add("every reply is in Greek", all_replies and all(is_greek(t) for t in all_replies if len(prose(t)) > 40), [t[:60] for t in all_replies if len(prose(t)) > 40 and not is_greek(t)][:3])
-        add("no Chinese characters", not CJK.search(text))
+        add("every reply is in Greek", all_replies and all(is_greek(t) for t in all_replies if len(prose(t)) > 40), [t[:60] for t in all_replies if len(prose(t)) > 40 and not is_greek(t)][:3], kind="rule")
+        add("no Chinese characters", not CJK.search(text), kind="rule")
         review = True
     elif test in BENCH:
         bench, base = BENCH[test], FIXTURES.get(test)
         if bench["readonly"]:
             changed = changed_files(work, base) if base else sorted(tree(work))
-            add("changed nothing", not changed, changed)
+            add("changed nothing", not changed, changed, kind="rule")
         if bench["check"]:
             add(f"{bench['check']} checks", *run_check(bench["check"], work, base, reply or text))
         for pattern in bench["answer"]:
             add(f"the answer says {pattern}", re.search(pattern, text, re.I), text[:200])
         if bench["greek"]:
-            add("final reply is in Greek", is_greek(reply), reply[:150])
-            add("no Chinese characters", not CJK.search(text) and not any(CJK.search(v.decode("utf-8", "ignore")) for v in tree(work).values()))
-            add("no words mixing Greek and Latin letters", not MIXED.findall(prose(text)), MIXED.findall(prose(text))[:5])
+            add("final reply is in Greek", is_greek(reply), reply[:150], kind="rule")
+            add("no Chinese characters", not CJK.search(text) and not any(CJK.search(v.decode("utf-8", "ignore")) for v in tree(work).values()), kind="rule")
+            add("no words mixing Greek and Latin letters", not MIXED.findall(prose(text)), MIXED.findall(prose(text))[:5], kind="rule")
     elif test == "B":
         for name in ("Makefile", "e2e.sh", "README.md"):
             add(f"{name} exists", os.path.exists(os.path.join(work, name)))
@@ -647,7 +657,7 @@ def score(test, work, replies, reply, all_replies, events):
                 code, output = in_universal(work, "make e2e 2>&1 | tail -25; test ${PIPESTATUS[0]} -eq 0; rc=$?; sleep 1; pgrep -a 'node|python' | grep -v bash; exit $rc", 240)
                 add(f"make e2e passes, run {attempt}", code == 0, output[-300:])
         review = True
-    failed = [c for c in checks if not c[1]]
+    failed = [c for c in checks if not c[1] and (len(c) < 4 or c[3] != "model")]     # the model's own measures do not fail a run
     if failed or not checks:
         return "FAIL", checks
     return ("REVIEW" if review else "PASS"), checks
@@ -734,7 +744,7 @@ def import_batchline(runner, folder):
     except Exception:
         status, checks = "ERROR", [("scoring failed", False, traceback.format_exc()[-300:])]
     runner.save({"model": MODELS[0], "test": "B", "title": TITLES["B"], "status": status, "seconds": round(time.time() - started), "reason": "imported", "turns": 0, "calls": 0,
-                 "progress_calls": 0, "prompt_max": 0, "errors": 0, "attempts": 1, "engine": {}, "checks": [{"label": c[0], "ok": c[1], "detail": str(c[2])[:300]} for c in checks],
+                 "progress_calls": 0, "prompt_max": 0, "errors": 0, "attempts": 1, "engine": {}, "checks": [{"label": c[0], "ok": c[1], "detail": str(c[2])[:300], "kind": c[3] if len(c) > 3 else "task"} for c in checks],
                  "finished_at": time.time(), "reply": ""})
 
 

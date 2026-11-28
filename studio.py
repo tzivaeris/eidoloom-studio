@@ -7161,6 +7161,26 @@ def repeats_rejected(run, rel, sig):
 
 REJECTED_INSIDE = ("This change includes the change to {rel} you rejected earlier in this run{more}. "
                    "Accept only if you want it after all.")
+REFUSAL_RE = re.compile(r"^\s*(?:no\b|nope\b|don'?t\b|do not\b|never\b|stop\b|leave it\b|όχι\b|μην\b|μη\b|σταμάτα\b|άσ'? ?το\b)", re.I)
+KEYWORDS = {"def", "class", "return", "import", "from", "self", "None", "True", "False", "and", "not", "for", "while", "with",
+            "const", "let", "var", "function", "this", "new", "the", "int", "str"}
+
+
+def about_rejected(run, text):
+    """The files with a rejected change that a message from the user is about: it names the file, or a name the rejected
+    lines brought in (SECONDS_PER_MINUTE), and does not open with a refusal. An unrelated message ("also fix the README")
+    is not a yes to a larger edit holding the rejected change (the user's review of 2026-11-28)."""
+    if REFUSAL_RE.match(text or ""):
+        return set()
+    found = set()
+    for rel, sig in getattr(run, "rejected", []):
+        names = {rel, rel.rsplit("/", 1)[-1]}
+        names |= {w for line in sig for w in re.findall(r"[A-Za-z_][A-Za-z0-9_]{2,}", line) if w not in KEYWORDS}
+        if any(re.search(rf"(?<![\w.-]){re.escape(n)}(?![\w-])", text) for n in names):
+            found.add(rel)
+    return found
+
+
 HOLDS_NOTE = ("Studio did not show this edit to the user: it holds the change to {rel} the user rejected in this run, with "
               "more lines added. Do not make that change by any route unless the user says yes to it: ask the user what they would "
               "prefer (end your turn with the question), or make a change without it, or stop and say what you would need.")
@@ -7247,6 +7267,7 @@ def check_rejected_after(run, before):
             os.remove(path)
         else:
             write_bytes(path, old.encode("utf-8"))
+        guard_event(run, "blocked", "repeat_check", "rejected_by_command", path=rel)
         run.emit("status", text=f"A command made the change to {rel} you rejected; Studio put the file back and asks you.")
         decision, note = run.ask(kind="edit", path=rel, old=old or "", new=now, change=describe_change(old, now),
                                  warning=REJECTED_BY_COMMAND.format(rel=rel))
@@ -7290,16 +7311,19 @@ def apply_edit(run, rel, path, old, new):
     if not run.auto_apply:
         sig = edit_signature(old, new)
         if repeats_rejected(run, rel, sig):
+            guard_event(run, "blocked", "repeat_check", "repeat_rejected", path=rel)
             run.emit("status", text="The model sent a change you rejected again; Studio did not show it and asked it to change course.")
             return False, f"Not shown again: {rel}", REPEAT_NOTE.format(rel=rel)
         extra = {"hunks": hunks} if (hunks := hunks_for_approval(old, new)) else {}
         if holds_rejected(run, rel, sig):
-            if not getattr(run, "guided_since_reject", False):
+            if rel not in getattr(run, "guided_paths", set()):
                 # The user's rule of 2026-11-28: a rejected change is not shown again without a new yes, even inside a
                 # larger edit (on-r3 test 4 of the v3 benchmark sent the constant with its uses, and it was accepted).
+                guard_event(run, "blocked", "repeat_check", "holds_rejected", path=rel)
                 run.emit("status", text="The model sent an edit holding a change you rejected; Studio did not show it and asked it to ask you.")
                 return False, f"Not shown: {rel}", HOLDS_NOTE.format(rel=rel)
             extra["warning"] = REJECTED_INSIDE.format(rel=rel, more=", with more lines added")
+            guard_event(run, "triggered", "repeat_check", "holds_rejected_shown", lapse=False, path=rel)
         run.last_parts = None
         decision, note = run.ask(kind="edit", path=rel, old=old or "", new=new, change=describe_change(old, new), **extra)
         if decision != "accept":
@@ -7408,7 +7432,7 @@ def tool_write_document(run, args):
     run.emit("file_changed", path=rel, checkpoint=cid, action="document", change=change)
     size = max(1, len(data) // 1024)
     return with_mixed_note((True, f"Saved {rel}", f"Saved the {kind} file {rel} ({size} KB)." + (" The earlier file is in the trash." if replacing else "")
-                            + " It reads back as:\n" + new[:1500] + ("\n[…]" if len(new) > 1500 else "")), rel, new, old)
+                            + " It reads back as:\n" + new[:1500] + ("\n[…]" if len(new) > 1500 else "")), rel, new, old, run)
 
 
 def skills_path(username):
@@ -7504,6 +7528,7 @@ def tool_plan(run, args):
         steps = [repair_mixed(step) for step in steps]
     bad = plan_script_problems(steps)
     if bad:
+        guard_event(run, "blocked", "script_check", "plan_sent_back", words=len(bad))
         return False, "Plan sent back", ("Studio note: the plan was not shown, because " + "; ".join(f"step {i} has «{w}»" for i, w in bad[:5])
                                          + ". Call plan again with each word in one language and one alphabet, and no Chinese, "
                                            "Japanese, Korean or Cyrillic characters.")
@@ -7585,6 +7610,7 @@ def tool_ask_user(run, args):
                           for part in [q["question"], q.get("header") or ""] + [o["label"] + " " + (o.get("description") or "") for o in q["options"]])
         bad = mixed_words(shown)
         if bad:        # the card is shown as written, so a typo like «_potάμι» is fixed before the user sees it
+            guard_event(run, "blocked", "script_check", "questions_sent_back", words=len(bad))
             return False, "Questions not shown", "The questions were not shown to the user. " + mixed_note(bad, "they have") + " Then call ask_user again."
     decision, note = run.ask(kind="question", questions=questions)
     answers = run.last_answers
@@ -7786,7 +7812,7 @@ def tool_write_file(run, args):
     path = resolve(run.ws, rel)
     refuse_git_folder(rel_posix(path, run.ws["path"]))
     old = current_text(path)
-    return with_docstring_note(run, with_check_note(with_mixed_note(apply_edit(run, rel_posix(path, run.ws["path"]), path, old, content), rel, content, old), rel, path, old),
+    return with_docstring_note(run, with_check_note(with_mixed_note(apply_edit(run, rel_posix(path, run.ws["path"]), path, old, content), rel, content, old, run), rel, path, old, run),
                                rel, path, old)
 
 
@@ -7885,7 +7911,7 @@ def file_problem(rel, text):
         return None
 
 
-def with_check_note(result, rel, path, old):
+def with_check_note(result, rel, path, old, run=None):
     """An applied edit's result, saying when the file no longer parses. Files that did not parse before are left alone."""
     ok, summary, text = result
     if not ok or not APP.cfg.get("edit_checks", True) or summary == "No changes":
@@ -7898,6 +7924,7 @@ def with_check_note(result, rel, path, old):
     lines = (current_text(path) or "").splitlines()
     shown = f" (`{lines[line - 1].strip()[:160]}`)" if 0 < line <= len(lines) and lines[line - 1].strip() else ""
     where = f" on line {line}{shown}" if line else ""
+    guard_event(run, "triggered", "edit_checks", "broken_file", path=rel, line=line or None)
     return ok, summary, text + f"\nStudio checked {rel}: it no longer parses{where}: {msg}. Fix this before going on."
 
 
@@ -7976,6 +8003,7 @@ def with_docstring_note(run, result, rel, path, old):
         return result
     shown = ", ".join(missing[:12]) + (f" and {len(missing) - 12} more" if len(missing) > 12 else "")
     kind = "a docstring in Greek" if greek else "a docstring"
+    guard_event(run, "triggered", "rule_checks", "docstring_rule", path=rel, functions=len(missing))
     return ok, summary, text + (f"\nStudio checked {rel} against the user's rule «{words}»: {len(missing)} new function"
                                 f"{'s' if len(missing) > 1 else ''} without {kind} ({shown}), test functions included. Add them now.")
 
@@ -8019,13 +8047,15 @@ def rules_note(run):
     return note
 
 
-def with_mixed_note(result, rel, new, old):
+def with_mixed_note(result, rel, new, old, run=None):
     """An applied edit's result, naming words it brought in that mix Greek and Latin letters (the edit stays as it is)."""
     ok, summary, text = result
     if not ok or not APP.cfg.get("script_check", True):
         return result
     before = set(mixed_words(old or ""))
     added = [w for w in mixed_words(new) if w not in before]
+    if added:
+        guard_event(run, "triggered", "script_check", "mixed_word", path=rel, words=len(added))
     return (ok, summary, text + "\n" + mixed_note(added, f"{rel} now has") + " Fix them unless they are meant to be so.") if added else result
 
 
@@ -8044,7 +8074,7 @@ def tool_replace_in_file(run, args):
     if count > 1:
         raise ApiError(400, f"old_text matches {count} times; include more surrounding context to make it unique")
     return with_docstring_note(run, with_check_note(with_mixed_note(apply_edit(run, rel_posix(path, run.ws["path"]), path, text, text.replace(old_text, new_text, 1)),
-                                                                    rel, new_text, old_text), rel, path, text), rel, path, text)
+                                                                    rel, new_text, old_text, run), rel, path, text, run), rel, path, text)
 
 
 WRITING_COMMAND_RE = re.compile(r">|\b(sed\s+-i|tee|mv|cp|rm|mkdir|touch|patch|git\s+apply|npm\s+(install|i)\b|pip\s+install)")
@@ -8138,6 +8168,8 @@ def tool_run(run, args):
             touched = []
         if not run.auto_commands or touched:
             extra = {"warning": REJECTED_FILE_COMMAND.format(rel=", ".join(touched))} if touched else {}
+            if touched:
+                guard_event(run, "triggered", "repeat_check", "command_names_rejected", lapse=False, paths=touched)
             decision, note = run.ask(kind="command", command=command, **extra)
             if decision != "accept":
                 return False, "Command skipped", "The user rejected this command." + (f" Note: {note}" if note else "")
@@ -8154,6 +8186,7 @@ def tool_run(run, args):
         if run.waits >= WAIT_NOTE_AFTER:
             ok, summary, text = result
             result = ok, summary, text + "\n" + WAIT_NOTE.format(n=run.waits)
+            guard_event(run, "triggered", "turn_guard", "waits", waits=run.waits)
     return result
 
 
@@ -8462,6 +8495,7 @@ def plan_progress_note(run, name, args):
     if not plan or not parsed or name == "plan" or parsed[1] == len(plan) or getattr(run, "plan_noted", False):
         return ""
     run.plan_noted = True
+    guard_event(run, "triggered", "plan_tool", "plan_progress")
     return f'\n\nStudio note: your plan has {len(plan)} steps, so set progress as "n/{len(plan)}".'
 
 
@@ -9970,8 +10004,10 @@ def fit_context(run, history, ctx=None, fixed=None):
         if size() <= room * CONTEXT_TRIM_AT:
             break
     if round(size()) < before:
+        guard_event(run, "recovered", "context_fit", "trimmed", lapse=False, before=before, after=round(size()))
         run.emit("status", text=f"Shortened older tool output to stay within what {run.model} can hold ({ctx // 1024}K tokens).")
     if size() > room * CONTEXT_COMPACT_AT:
+        guard_event(run, "recovered", "context_fit", "summarized", lapse=False, before=round(size()))
         compact_in_run(run, history, ctx, round(size()))
 
 
@@ -10264,6 +10300,9 @@ def call_model_here(run, messages):
         bias = script_ban_bias()
         if bias:
             payload["logit_bias"] = bias
+            if not getattr(run, "ban_logged", False) and hasattr(run, "emit"):    # once a run: a prevention, not a catch
+                run.ban_logged = True
+                guard_event(run, "triggered", "script_ban", "scripts_banned", lapse=False, tokens=len(bias))
     if run.stop:
         raise Stopped()
     release_engines(run)
@@ -10999,11 +11038,22 @@ def turn_guard(run, results, history):
         return f"the same call was made {run.repeats + 1} times in a row"
     if run.fail_streak >= FAIL_NOTE_AT and not run.guard_noted.get("fail"):
         run.guard_noted["fail"] = True
+        guard_event(run, "triggered", "turn_guard", "failing_calls", calls=run.fail_streak)
         history.append({"role": "user", "content": STUCK_NOTE.format(what=f"your last {run.fail_streak} tool calls all failed")})
     elif run.plan_calls >= PLAN_NOTE_AT and not run.guard_noted.get("plan"):
         run.guard_noted["plan"] = True
+        guard_event(run, "triggered", "turn_guard", "plan_rewrites", plans=run.plan_calls)
         history.append({"role": "user", "content": STUCK_NOTE.format(what=f"you have written the plan {run.plan_calls} times in this task; keep to it and do the work")})
     return None
+
+
+def guard_event(run, outcome, name, kind, lapse=True, **info):
+    """One structured record of a guard acting, kept in the chat's events (the page ignores them) so a benchmark counts
+    interventions without reading note texts: `guard_triggered` (a note sent to the model), `guard_blocked` (something
+    kept from the user or put back), `guard_recovered` (Studio fixed it itself). `name` is the config switch, `kind` the
+    case (the event's `case` field); `lapse` is False for notes every run of a kind gets (the closing rules check), which are not model mistakes."""
+    if run is not None and hasattr(run, "emit"):
+        run.emit(f"guard_{outcome}", guard=name, case=kind, lapse=lapse, **{k: v for k, v in info.items() if v is not None})
 
 
 def take_guidance(run, history):
@@ -11014,8 +11064,9 @@ def take_guidance(run, history):
         history.append({"role": "user", "content": GUIDE_NOTE + "\n" + USER_EXTRAS_END + text})
     if messages:
         run.steered = True                # its next reply should act on it, not just say what it will do
-        if getattr(run, "rejected", None):
-            run.guided_since_reject = True    # the user wrote after rejecting: an edit holding the change is theirs to judge
+        for text in messages:
+            for rel in about_rejected(run, text):     # the user wrote about that change: a larger edit holding it is theirs to judge
+                run.guided_paths = getattr(run, "guided_paths", set()) | {rel}
     return len(messages)
 
 
@@ -11059,15 +11110,18 @@ def agent_loop(run):
             if rest != result["content"]:
                 calls, result["content"] = calls + more, rest
                 run.emit("text_fixed", text=rest)
+                guard_event(run, "recovered", "text_tool_calls", "calls_in_text", calls=len(more))
         else:
             calls, result["content"] = recover_text_tool_calls(result["content"])
         if not calls and APP.cfg["text_tool_calls"]:
             calls, result["content"] = recover_bare_tool_calls(result["content"], {**run.mcp_tools, **run.user_tools})
         if calls and not result["tool_calls"]:        # the chat showed the calls as text while they streamed
             run.emit("text_fixed", text=result["content"])
+            guard_event(run, "recovered", "text_tool_calls", "calls_in_text", calls=len(calls))
         if not calls and (was_cut_off(result) or (APP.cfg["retry_cut_off"] and has_garbled_call(result["content"]))):
             if APP.cfg["retry_cut_off"] and retries < MAX_CUT_OFF_RETRIES:
                 retries += 1
+                guard_event(run, "triggered", "retry_cut_off", "cut_off", attempt=retries)
                 run.emit("status", text="The model's reply was incomplete. Asking it to send it again…")
                 history.append({"role": "user", "content": RETRY_NOTE})
                 save_session(run.session)
@@ -11085,11 +11139,10 @@ def agent_loop(run):
             if fixed != result["content"]:      # words the lexicon can repair are repaired; only the rest is sent back
                 result["content"] = history[-1]["content"] = fixed
                 run.emit("text_fixed", text=fixed)
+                guard_event(run, "recovered", "script_check", "mixed_words_repaired", where="reply")
             why = script_problem(run, result["content"])
             if why:
-                shown = drop_foreign(run, result["content"])
-                if shown != result["content"]:     # the draft stays in the chat, marked: without the stray words (test 35, v3)
-                    run.emit("text_fixed", text=shown)
+                guard_event(run, "triggered", "script_check", "scripts", where="reply", why=why[:200])
                 run.emit("status", text="The reply mixed scripts or languages. Asking the model to write it again…")
                 run.emit("sent_back", why=why.split(". Write it in")[0][:300])       # the page marks the reply, so it does not look accepted
                 history.append({"role": "user", "content": SCRIPT_NOTE.format(what="reply", why=why)})
@@ -11099,6 +11152,7 @@ def agent_loop(run):
                 continue
             if rules_unchecked(run):
                 run.rules_noted = True
+                guard_event(run, "triggered", "rule_checks", "rules_check", lapse=False)
                 run.emit("status", text="Asking the model to check its changes against your earlier requests…")
                 history.append({"role": "user", "content": rules_note(run)})
                 save_session(run.session)
@@ -11107,6 +11161,7 @@ def agent_loop(run):
                 # Steered mid-task, models often reply "Adding X now." without a call, which would end the run unfinished.
                 run.steered = False
                 run.nudged_last = True
+                guard_event(run, "triggered", "steer", "steer_words")
                 run.emit("status", text="The model replied without acting on your message. Asking it to carry on…")
                 history.append({"role": "user", "content": STEER_NOTE})
                 save_session(run.session)
@@ -11115,6 +11170,7 @@ def agent_loop(run):
                     and run.announce_nudges < MAX_ANNOUNCE_NUDGES and announces_work(result["content"])):
                 run.announce_nudges += 1
                 run.nudged_last = True
+                guard_event(run, "triggered", "announce_check", "announce")
                 run.emit("status", text="The model said what it would do next but stopped. Asking it to carry on…")
                 history.append({"role": "user", "content": ANNOUNCE_NOTE})
                 save_session(run.session)
@@ -11125,14 +11181,18 @@ def agent_loop(run):
             if clean != result["content"]:      # sent back once already this run: the stray characters still leave the chat
                 result["content"] = history[-1]["content"] = clean
                 run.emit("text_fixed", text=clean)
+                guard_event(run, "recovered", "script_check", "foreign_dropped", where="reply")
             save_session(run.session)
             return "answered", None
         clean = repair_mixed(result["content"])
         aside = script_aside(run, clean)
         clean = drop_foreign(run, clean)
+        if aside:
+            guard_event(run, "triggered", "script_check", "scripts_aside")
         if clean != result["content"]:      # the calls run anyway; the chat shows the words without the stray characters
             result["content"] = history[-1]["content"] = clean
             run.emit("text_fixed", text=clean)
+            guard_event(run, "recovered", "script_check", "text_cleaned", where="with tool calls")
         finished, repeated, outcomes = False, False, []
         for tc in calls:
             # The history keeps the full name too, so the model sees the right one for next time.
@@ -11159,9 +11219,12 @@ def agent_loop(run):
                 repeated = repeated or key == last_call
                 last_call = key
                 if name == "finish":
+                    raw = out
                     out = repair_mixed(out)
                     if run.script_noted:       # its one send-back is used: the stray characters still leave the summary
                         out = drop_foreign(run, out)
+                    if out != raw:
+                        guard_event(run, "recovered", "script_check", "summary_cleaned", where="finish summary")
                     finished, summary = True, out
             outcomes.append((ok, summ, name))
             run.emit("tool_result", id=tc["id"], name=name, ok=ok, summary=summ, output=out[-12000:] if name == "run" else out[:4000])
@@ -11182,22 +11245,26 @@ def agent_loop(run):
             history.append({"role": "user", "content": "You repeated the same call; change approach."})
         stuck = None if finished else turn_guard(run, outcomes, history)
         if stuck:
+            guard_event(run, "blocked", "turn_guard", "stuck", why=stuck)
             run.stuck = stuck
             save_session(run.session)
             return "stuck", None
         if finished:
             why = script_problem(run, summary)
             if why:
+                guard_event(run, "triggered", "script_check", "scripts", where="finish summary", why=why[:200])
                 run.emit("status", text="The summary mixed scripts or languages. Asking the model to write it again…")
                 history.append({"role": "user", "content": SCRIPT_NOTE.format(what="finish summary", why=why) + " Call finish again with the rewritten summary."})
                 finished = False
             elif leaves_out_answer(run, summary):
                 run.answer_noted = True
+                guard_event(run, "triggered", "answer_check", "answer_left_out")
                 run.emit("status", text="The model finished without writing its answer. Asking it for the answer…")
                 history.append({"role": "user", "content": ANSWER_NOTE.format(summary=" ".join(summary.split())[:200])})
                 finished = False
             elif rules_unchecked(run):
                 run.rules_noted = True
+                guard_event(run, "triggered", "rule_checks", "rules_check", lapse=False)
                 run.emit("status", text="Asking the model to check its changes against your earlier requests…")
                 history.append({"role": "user", "content": rules_note(run)})
                 finished = False

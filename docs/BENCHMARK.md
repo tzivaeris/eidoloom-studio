@@ -136,3 +136,28 @@ Judged on the model alone (a run where the model sent the rejected change again 
 The tests' prompts are in `sandbox/prompts/STRATA_TESTS.md` and `sandbox/prompts/BENCH_TESTS.md`, their
 fixtures in `sandbox/prompts/fixtures/` and their checks in `sandbox/prompts/checks/`; `sandbox/overnight.py`
 runs and scores them. One model and three repetitions is a small sample: read it as a direction, not a score.
+
+## The guarded arm again
+
+After the run above, the guards were fixed for its failures (an edit holding a rejected change is held back, file names
+in bold code no longer hide mixed words, a request that something "behaves exactly as now" gets the closing rules check)
+and the guarded arm was run again, 40 tests three times (2026-11-28). Each run is scored three ways: the task, the user's
+rules as the user saw them, and the model by itself; what Studio caught comes from its guard records.
+
+| | Guards on, again | Guards on, above |
+| --- | --- | --- |
+| Raw (checks alone) | 102 pass, 12 review, 6 fail | 101 pass, 15 review, 4 fail |
+| What the user got | **116 of 120** | 116 of 120 |
+| Task done | 117 of 120 | 119 of 120 |
+| The user's rules kept, as the user saw it | **119 of 120** | 117 of 120 |
+| The model kept the rules by itself | 98 of 120 | 100 of 120 |
+| Lapses Studio caught | 41 in 20 runs | 31 in 18 runs |
+| Runs where a lapse reached the user | **1** | 3 |
+| Strict review (any wrong status in test 8, any mixed or foreign word in tests 6, 9, 14) | 111 of 120 | not judged |
+
+What failed for the user: half-English asides between tool calls in the long Greek session (the only lapse of the
+user's rules), a count of 10 tests instead of 11, a rename that also renamed test methods, and a search that misses a
+final sigma inside the query. In all three runs of the rejected-edit test the model tried the rejected change again
+(six tries, among them a larger edit and a whole-file write holding it); Studio showed none of them, and the model then
+asked: 3 of 3 for the user, 0 of 3 for the model. Two failures of the automatic checks were rescored: the model's own
+repeat in test 4 (now its own measure) and a "(line 202)" read as a status in test 8 (a checker fix).

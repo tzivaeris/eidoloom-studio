@@ -16,14 +16,20 @@
   could copy that marker as its own answer. Only the text of older file writes is shortened now.
 
 - **A larger edit that holds a change you rejected is not shown either**: the agent is told to ask you first. If you
-  have written to the agent since the rejection, it is shown, and its card says it holds the rejected change.
+  have since written to the agent about that change (naming the file or what it added, without a no), it is shown,
+  and its card says it holds the rejected change. An unrelated message does not count.
 - **Fixed**: a file name in bold code (``**`db.py`**``) made the check for words mixing Greek and Latin letters skip the
-  prose up to the next code span, so «ενόςSingle» reached the chat. A reply sent back for stray words is now shown
-  without them, and an agent that tries `ask_user` where questions are off is told to ask in its reply.
+  prose up to the next code span, so «ενόςSingle» reached the chat. An agent that tries `ask_user` where questions
+  are off is told to ask in its reply.
 - **A request that something "behaves exactly as now"** gets the closing rules check even when it is the only request:
   the agent is asked to compare the old and new output, not to read the code.
-- Benchmark: each run records what the guards caught (`sandbox/guard_log.py`) and is scored three ways: the task, the
-  model alone, and what Studio caught before the user saw it.
+- **Every guard records what it did** as a structured event in the chat: `guard_triggered` (a note to the model),
+  `guard_blocked` (kept from you or put back) or `guard_recovered` (fixed by Studio), with the guard, the case and
+  whether it was the model's mistake. The page ignores them; the benchmark counts them.
+- Benchmark: each run is scored three ways (the task, the model alone, and what Studio caught before the user saw it,
+  `sandbox/guard_log.py`), each check says whether it is about the task or your rules, test 4 counts whether the
+  rejected change was shown or applied again (the model's own repeats are recorded apart), and a reply Studio sent
+  back is not scored.
 
 ## 0.2.0 (2026-11-27)
 

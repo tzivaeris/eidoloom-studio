@@ -84,7 +84,8 @@ The rest (REVIEW: 8 without the guards, 15 with them) passed every check but nee
 other scripts the chat does not use, repairs of words mixing Greek and Latin letters, checks of the user's earlier rules,
 a check for a finish that leaves the answer out, and one that catches a rejected change sent again. On two smaller Qwen models with a 32K context
 window, long sessions ran out of room and ended on empty replies; Studio now shortens and, near the limit, summarizes
-the chat during the run, and those sessions finished: over all 40 tests no guarded run ran out of room, and qwen3.6:32k went from 27 to 30 passed. One model and a few repetitions is a small sample, so read it as
+the chat during the run, and those sessions finished: over all 40 tests no guarded run ran out of room, and qwen3.6:32k went from 27 to 30 passed. After that run the guards were fixed for what still failed, and the guarded arm was run again (40 tests, three times): 116 of 120 again for the user, now counted three ways. The task was done in 117 runs; the user's rules held, as the user saw it, in 119; the model kept them by itself in 98. Studio caught 41 of the model's lapses in 20 runs, among them six tries at a rejected change, none shown to the user; one lapse (half-English asides in a Greek chat) still reached the user. The three task failures (a miscount, a rename that went too far, a search bug) are the model's own. Details: [BENCHMARK.md](docs/BENCHMARK.md#the-guarded-arm-again).
+One model and a few repetitions is a small sample, so read it as
 a direction, not a score.
 Every run, the failing check or the reviewer's reason, and how runs are scored: [BENCHMARK.md](docs/BENCHMARK.md).
 

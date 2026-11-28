@@ -2218,7 +2218,7 @@ def test_plan(c, projects, gw_port):
     shown = []
     run.emit = lambda kind, **k: shown.append(kind)
     cjk = sm.execute_tool(run, "plan", {"steps": ["Κώδικας: μουσική, loweringduring朗读, κουμπί", "Τρέιλερ: έλεγχος_CLEAR της αφήγησης", "Run `npm test` in tests/"]})
-    check("Chinese in a step, or Greek and Latin joined by _, sends the plan back unseen", cjk[0] is False and not shown
+    check("Chinese in a step, or Greek and Latin joined by _, sends the plan back unseen", cjk[0] is False and shown == ["guard_blocked"]
           and "«loweringduring朗读»" in cjk[2] and "«έλεγχος_CLEAR»" in cjk[2] and "step 3" not in cjk[2], cjk)
     run.emit = lambda *a, **k: None
     check("a clean plan gets none", "Studio note" not in sm.execute_tool(run, "plan", {"steps": ["Έλεγχος με το greek-check", "Run the tests"]})[2])
@@ -6211,6 +6211,17 @@ def test_repeat_and_stray(c, projects, gw_port):
     done = [e for e in events if e["type"] == "tool_result" and e.get("name") == "finish"]
     check("and the model is told to ask or change course", done and "did not show this change" in done[-1]["output"], done[-1]["output"] if done else events[-3:])
     check("the file is unchanged", open(os.path.join(folder, "README.md")).read() == "# Sample\n")
+    held_back = [e for e in events if e["type"] == "guard_blocked"]
+    check("holding the repeat back is recorded as a structured guard event", held_back and held_back[0].get("guard") == "repeat_check"
+          and held_back[0].get("case") == "repeat_rejected" and held_back[0].get("lapse") is True, held_back)
+    sys.path.insert(0, os.path.join(ROOT, "sandbox"))
+    import guard_log
+    logged = guard_log.lapses([], events)
+    check("the benchmark counts it from the event, not from the note's words", logged["source"] == "events"
+          and logged["caught"].get("repeat_rejected") == 1 and logged["by"].get("blocked") == 1, logged)
+    check("a check declares whether it is about the task or the user's rules; old results by exact label",
+          guard_log.check_kind({"label": "anything", "kind": "rule"}) == "rule" and guard_log.check_kind({"label": "changed nothing"}) == "rule"
+          and guard_log.check_kind({"label": "nothing changed"}) == "task")
     for answer in ("reject", "accept"):
         sneak = os.path.join(projects, f"sneak-{answer}")
         os.makedirs(sneak)
@@ -6296,6 +6307,12 @@ def test_repeat_and_stray(c, projects, gw_port):
               and not sm.holds_rejected(run, "t.py", sm.edit_signature(old, "import time\n\ndef parse_ts(x):\n    return x * 60.0\n")))
         check("a file name in bold code does not hide the prose after it from the mixed-word check (test 14, v3)",
               sm.mixed_words("3. **`db.py`** — οι αλλαγές μέσω ενόςSingle writer, με (`BadInput`, `NotFound`).") == ["ενόςSingle"])
+        about = types.SimpleNamespace(rejected=[("tallybook/timeutil.py", sm.edit_signature("import time\n", "import time\nSECONDS_PER_MINUTE = 60\n"))])
+        check("a message about the rejected change lets a larger edit holding it be shown; an unrelated one or a refusal does not",
+              sm.about_rejected(about, "Yes, add SECONDS_PER_MINUTE and use it.") == {"tallybook/timeutil.py"}
+              and sm.about_rejected(about, "Also fix the README typo.") == set()
+              and sm.about_rejected(about, "No, don't add SECONDS_PER_MINUTE.") == set()
+              and sm.about_rejected(about, "Όχι, άσε το timeutil.py") == set())
         check("a request that something behaves exactly as now is checked even when it is the only one",
               sm.SAME_BEHAVIOUR_RE.search("Without it, the script behaves exactly as now.") and not sm.SAME_BEHAVIOUR_RE.search("Add a --dry-run option."))
         sm.APP.cfg["ask_tool"] = False

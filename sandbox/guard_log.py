@@ -6,9 +6,11 @@ A run is scored three ways (the user's proposal of 2026-11-28):
   Studio had to catch (a rejected edit sent again, mixed scripts sent back, an unreadable reply, a missing docstring...).
 - harness: what Studio caught before the user saw it, and whether any lapse still reached the user.
 
-`lapses(messages, events)` reads the notes Studio added to the model's conversation (`messages`, the session file's
-wire history) and the chat's `text_fixed` events (replies Studio repaired before showing them). Notes that every
-run of a kind gets (the closing check against the user's requests, reminders, context notes) are not lapses.
+`lapses(messages, events)` reads Studio's structured events (`guard_triggered`, `guard_blocked`, `guard_recovered`,
+each with the guard, the case and whether it was a model lapse), which every guard emits since 2026-11-28. Chats from
+before have none; for them it reads the notes Studio added to the model's conversation (`messages`, the session file's
+wire history) and the chat's `text_fixed` events, by their wording. Notes that every run of a kind gets (the closing
+check against the user's requests, reminders, context notes) are not lapses.
 """
 import re
 
@@ -24,6 +26,7 @@ LAPSES = [
     ("stuck", r"Stop and think before the next call"),
     ("waits", r"this is wait number \d+ in this run"),
     ("repeat_rejected", r"Studio did not show this change to the user"),
+    ("holds_rejected", r"Studio did not show this edit to the user: it holds the change"),
     ("rejected_by_command", r"that command changed \S+ the way the user rejected"),
     ("broken_file", r"Studio checked \S+: it no longer parses"),
     ("docstring_rule", r"Studio checked \S+ against the user's rule «[^»]*»: [1-9]\d* new function"),
@@ -44,8 +47,22 @@ def _text(content):
     return str(content or "")
 
 
+GUARD_EVENTS = ("guard_triggered", "guard_blocked", "guard_recovered")
+
+
 def lapses(messages, events):
-    """{"caught": {kind: n}, "routine": {kind: n}} for one chat."""
+    """{"caught": {kind: n}, "routine": {kind: n}, "by": {outcome: n}, "source": "events"|"notes"} for one chat.
+    Studio's structured guard events are read when the chat has them (since 2026-11-28); older chats fall back to the
+    note texts below."""
+    marked = [e for e in events or [] if e.get("type") in GUARD_EVENTS]
+    if marked:
+        caught, routine, by = {}, {}, {}
+        for e in marked:
+            into = caught if e.get("lapse", True) else routine
+            into[e.get("case") or "?"] = into.get(e.get("case") or "?", 0) + 1
+            outcome = e["type"][len("guard_"):]
+            by[outcome] = by.get(outcome, 0) + 1
+        return {"caught": caught, "routine": routine, "by": by, "source": "events"}
     caught, routine = {}, {}
     for m in messages or []:
         if m.get("role") not in ("user", "tool"):
@@ -70,20 +87,49 @@ def lapses(messages, events):
             streamed = ""
         elif e.get("type") in ("tool_call", "user", "done"):
             streamed = ""
-    return {"caught": caught, "routine": routine}
+    return {"caught": caught, "routine": routine, "by": {}, "source": "notes"}
 
 
-# Checks about the user's rules (language, scope, rejections, rules set earlier in the chat); the rest are the task.
-RULE_CHECK = re.compile(r"in Greek|Chinese|mixing Greek|rules still hold|remembered the rules|resubmitted|changed nothing|"
-                        r"only README\.md changed|exactly one line|no rewrite of unrelated|docstrings", re.I)
+# Each check says whether it is about the job or the user's rules (`kind` in the results, set where overnight.py's score
+# adds it). Results from before 2026-11-28 have no kind: these are their rule checks, by exact label.
+RULE_LABELS = {"only README.md changed", "exactly one line changed", "small change, no rewrite of unrelated files",
+               "changed nothing", "never resubmitted a rejected edit", "no Chinese characters", "final reply is in Greek",
+               "every reply is in Greek", "all project rules still hold", "Greek docstrings and features",
+               "no words mixing Greek and Latin letters"}
+
+
+def rejected_shown_again(events):
+    """Edit cards that showed the user a rejected change again: after the first rejection, a card the benchmark's runner
+    rejected too (it rejects only repeats of the rejected edit) or one that carries Studio's warning that it holds the
+    rejected change. Read from the chat, so it also scores runs from before the runner counted it."""
+    shown, rejected_once, card = 0, False, None
+    for e in events or []:
+        if e.get("type") == "approval" and e.get("kind") == "edit":
+            card = e
+            if rejected_once and e.get("warning"):
+                shown += 1
+                card = None
+        elif e.get("type") == "approval_resolved" and card is not None:
+            if e.get("decision") == "reject":
+                shown += rejected_once
+                rejected_once = True
+            card = None
+    return shown
+
+
+def check_kind(check):
+    if check["label"] == "never resubmitted a rejected edit":
+        return "model"               # what the model sent; whether the user saw it is "no rejected change shown again"
+    return check.get("kind") or ("rule" if check["label"] in RULE_LABELS else "task")
 
 
 def measures(result, verdict=None, caught=None):
     """The run's task, model and harness measures. `verdict` is the reviewer's PASS/FAIL for a REVIEW run (test 4's is
     about the rules, the others' about the task); `caught` is lapses()["caught"]."""
     checks = result.get("checks") or []
-    task = [c for c in checks if not RULE_CHECK.search(c["label"])]
-    rules = [c for c in checks if RULE_CHECK.search(c["label"])]
+    task = [c for c in checks if check_kind(c) == "task"]
+    rules = [c for c in checks if check_kind(c) == "rule"]
+    model_checks = [c for c in checks if check_kind(c) == "model"]
     finished = result.get("reason") in ("finished", "answered")
     task_ok = finished and all(c["ok"] for c in task)
     rules_ok = all(c["ok"] for c in rules)
@@ -95,5 +141,5 @@ def measures(result, verdict=None, caught=None):
     caught = caught or {}
     user_ok = task_ok and rules_ok
     return {"task": task_ok, "rules_for_user": rules_ok, "user": user_ok,
-            "model": user_ok and not caught, "caught": sum(caught.values()), "kinds": sorted(caught),
+            "model": user_ok and not caught and all(c["ok"] for c in model_checks), "caught": sum(caught.values()), "kinds": sorted(caught),
             "reached_user": not rules_ok}
